@@ -2,13 +2,19 @@
 import { ref, onMounted } from 'vue';
 import VueRecaptcha from 'vue3-recaptcha2';
 
+const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
+
 // Variables reactivas
 const listaRegistros = ref([]);
 const mensaje = ref('');
 const loading = ref(false);
 
-// TU CLAVE DE SITIO (La pública de Google)
+// TU CLAVE DE SITIO
 const siteKey = "6LfChlEsAAAAAMY9tP_3GcHTajCZjlZsvo4RaWyk"; 
+
+// 🟢 CORRECCIÓN 1: Definimos baseURL AQUÍ AFUERA para que todos la puedan usar
+// Si es modo DEV (Local), usa localhost:3000. Si es Producción (Vercel), usa ruta relativa.
+
 
 // 1. Función cuando el usuario resuelve el captcha
 const onVerify = async (token) => {
@@ -16,8 +22,8 @@ const onVerify = async (token) => {
   mensaje.value = "Verificando...";
 
   try {
-    // Llamamos a NUESTRO servidor local (server.js)
-    const respuesta = await fetch('/api/validar-insertar', {
+    // 🟢 CORRECCIÓN 2: Usamos comillas invertidas (``) para que funcione la variable
+    const respuesta = await fetch(`${baseURL}/api/validar-insertar`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token })
@@ -32,6 +38,7 @@ const onVerify = async (token) => {
       mensaje.value = "Error: " + datos.message;
     }
   } catch (error) {
+    console.error(error); // Es bueno ver el error en consola
     mensaje.value = "Error de conexión con el servidor.";
   } finally {
     loading.value = false;
@@ -41,7 +48,8 @@ const onVerify = async (token) => {
 // 2. Función para cargar la tabla desde la BD
 const cargarRegistros = async () => {
   try {
-    const res = await fetch('http://localhost:3000/api/obtener-datos');
+    // 🟢 Aquí también usamos comillas invertidas
+    const res = await fetch(`${baseURL}/api/obtener-datos`);
     const data = await res.json();
     listaRegistros.value = data;
   } catch (error) {
