@@ -74,4 +74,12 @@ app.get('/api/obtener-datos', async (req, res) => {
 });
 
 // 4. EXPORTACIÓN MODERNA PARA VERCEL
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = 3000;
+    app.listen(PORT, () => {
+        console.log(`✅ Servidor LOCAL corriendo en http://localhost:${PORT}`);
+    });
+}
+
+// Exportamos para Vercel
 export default app;
