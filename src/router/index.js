@@ -6,6 +6,7 @@ import ErrorView from '../views/ErrorView.vue'
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
+    // 1. Rutas normales
     {
       path: '/',
       name: 'inicio',
@@ -21,17 +22,18 @@ const router = createRouter({
       name: 'error',
       component: ErrorView
     },
-    // Comodín: Si escriben cualquier ruta rara, los manda a Error
-    {
-      path: '/:pathMatch(.*)*',
-      redirect: '/error'
-    },
     {
       path: '/hola-mundo',
       name: 'holamundo',
-      // Aquí podemos reusar el componente simple que tenías antes o crear uno nuevo
       component: () => import('../views/HolaMundoView.vue') 
     },
+
+    // 2. RUTA COMODÍN (SIEMPRE AL FINAL DE TODO)
+    // Cualquier ruta que no coincida con las de arriba, caerá aquí.
+    {
+      path: '/:pathMatch(.*)*', 
+      redirect: '/error' 
+    }
   ]
 })
 
