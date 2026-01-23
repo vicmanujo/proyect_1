@@ -114,6 +114,18 @@ app.post('/api/guardar-contacto', async (req, res) => {
     }
 });
 
+app.get('/api/contactos', async (req, res) => {
+    try {
+        let pool = await sql.connect(dbConfig);
+        // Traemos los últimos 50 registros
+        const result = await pool.request().query('SELECT TOP 50 * FROM FormularioContacto ORDER BY FechaRegistro DESC');
+        res.json(result.recordset);
+    } catch (err) {
+        console.error("Error al obtener contactos:", err);
+        res.status(500).json({ error: "Error de servidor" });
+    }
+});
+
 // 4. EXPORTACIÓN MODERNA PARA VERCEL
 if (process.env.NODE_ENV !== 'production') {
     const PORT = 3000;

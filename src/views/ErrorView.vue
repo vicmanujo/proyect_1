@@ -30,7 +30,7 @@
       <p class="text-subtitle-1 text-grey-darken-1 mb-8 px-4">
         Esta página está en construcción o algo salió mal.
         <br>
-        <strong>Estamos trabajando en ello.</strong> 👷‍♂️
+        <strong>Estamos trabajando en ello.</strong> 
       </p>
 
       <v-divider class="mb-8"></v-divider>

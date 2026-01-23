@@ -209,11 +209,19 @@ const enviarFormulario = async () => {
             to="/" 
             variant="text" 
             block 
-            color="grey-darken-1"
-          >
+            color="grey-darken-1">
             <v-icon start>mdi-arrow-left</v-icon>
             Volver al inicio
           </v-btn>
+
+          <v-btn 
+            to="/registros" 
+            variant="text" 
+            block 
+            color="blue-darken-1"> <v-icon start>mdi-table-account</v-icon>
+            Ver registros
+          </v-btn>
+
         </div>
 
       </v-form>
