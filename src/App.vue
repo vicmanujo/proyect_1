@@ -10,8 +10,8 @@ const items = [
 
 // Menú de demos (Agrupamos tus botones extra aquí para limpiar la barra)
 const demos = [
-  { title: 'Calculadora', to: '/error', icon: 'mdi-calculator' },
-  { title: 'Formulario', to: '/error', icon: 'mdi-form-select' },
+  { title: 'Calculadora', to: '/calculadora', icon: 'mdi-calculator' },
+  { title: 'Formulario', to: '/formulario', icon: 'mdi-form-select' },
   { title: 'Carrusel', to: '/error', icon: 'mdi-view-carousel' },
   { title: 'Página Error', to: '/error', icon: 'mdi-alert-circle' },
 ]

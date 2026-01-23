@@ -27,6 +27,16 @@ const router = createRouter({
       name: 'holamundo',
       component: () => import('../views/HolaMundoView.vue') 
     },
+    {
+      path: '/calculadora',
+      name: 'calculadora',
+      component: () => import('../views/CalculadoraView.vue')
+    },
+    {
+      path: '/formulario',
+      name: 'formulario',
+      component: () => import('../views/FormularioView.vue')
+    },
 
     // 2. RUTA COMODÍN (SIEMPRE AL FINAL DE TODO)
     // Cualquier ruta que no coincida con las de arriba, caerá aquí.
