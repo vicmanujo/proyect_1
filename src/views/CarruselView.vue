@@ -77,7 +77,7 @@ onMounted(() => {
         <v-avatar color="#42b883" size="50" class="elevation-2 mb-2">
           <v-icon color="white">mdi-cloud-upload</v-icon>
         </v-avatar>
-        <h2 class="text-h6 font-weight-bold text-grey-darken-3">Subir a Cloudinary</h2>
+        <h2 class="text-h6 font-weight-bold text-grey-darken-3">Subir Imagen</h2>
       </div>
 
       <v-text-field

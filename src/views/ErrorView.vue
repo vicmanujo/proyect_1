@@ -24,7 +24,7 @@
 
       <h2 class="text-h4 font-weight-black text-grey-darken-3 mb-3">
         Es que no eres tú,<br>
-        <span class="text-red-accent-3">somos nosotros.</span>
+        <span class="text-red-accent-3">soy yo.</span>
       </h2>
 
       <p class="text-subtitle-1 text-grey-darken-1 mb-8 px-4">
