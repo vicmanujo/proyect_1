@@ -4,13 +4,11 @@ import { ref, computed } from 'vue'
 // Detectar entorno para la URL
 const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 
-// Variables del formulario
 const valido = ref(false)
 const cargando = ref(false)
-const formulario = ref(null) // Referencia al formulario para resetearlo
+const formulario = ref(null) 
 const snackbar = ref({ show: false, text: '', color: '' })
 
-// Modelo de datos
 const datos = ref({
   nombre: '',
   correo: '',
@@ -19,56 +17,67 @@ const datos = ref({
   mensaje: ''
 })
 
-// --- REGLAS DE VALIDACIÓN ---
+// --- REGLAS DE VALIDACIÓN ESTRICTAS ---
 
-// 1. Nombre: Solo letras y espacios, máx 60.
+// 1. Nombre: 
+// - No acepta vacío ni solo espacios (.trim())
+// - Máximo 60
+// - Regex de solo letras (doble seguridad)
 const reglasNombre = [
   v => !!v || 'El nombre es obligatorio',
+  v => (v && v.trim().length > 0) || 'El nombre no puede ser solo espacios', // 🚫 NUEVA REGLA
   v => (v && v.length <= 60) || 'Máximo 60 caracteres',
-  v => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(v) || 'Solo se permiten letras y espacios'
+  v => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(v) || 'Solo se permiten letras'
 ]
 
-// 2. Correo: Formato email, máx 100.
+// 2. Correo: 
+// - No acepta espacios vacíos
 const reglasCorreo = [
   v => !!v || 'El correo es obligatorio',
+  v => (v && v.trim().length > 0) || 'El correo no puede tener espacios vacíos', // 🚫 NUEVA REGLA
   v => (v && v.length <= 100) || 'Máximo 100 caracteres',
   v => /.+@.+\..+/.test(v) || 'El correo debe ser válido'
 ]
 
-// 3. Teléfono: Solo números, exactamente 10.
+// 3. Teléfono
 const reglasTelefono = [
   v => !!v || 'El teléfono es obligatorio',
   v => /^[0-9]+$/.test(v) || 'Solo se permiten números',
   v => (v && v.length === 10) || 'Debe tener exactamente 10 dígitos'
 ]
 
-// 4. Fecha: Obligatoria (la validación de "no futuro" se hace en el atributo max del input)
+// 4. Fecha
 const reglasFecha = [
   v => !!v || 'La fecha de nacimiento es obligatoria'
 ]
 
-// 5. Mensaje: Máx 300.
+// 5. Mensaje: 
+// - No acepta solo espacios (evita mensajes vacíos disfrazados)
 const reglasMensaje = [
   v => !!v || 'El mensaje es obligatorio',
+  v => (v && v.trim().length > 0) || 'El mensaje no puede estar vacío', // 🚫 NUEVA REGLA
   v => (v && v.length <= 300) || 'Máximo 300 caracteres'
 ]
 
-// Calcular la fecha de HOY para que no seleccionen mañana
+// Calcular fecha máxima (Mayores de 18 años)
 const fechaMax = computed(() => {
   const hoy = new Date();
-  return hoy.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+  hoy.setFullYear(hoy.getFullYear() - 18); 
+  return hoy.toISOString().split('T')[0];
 })
 
-// --- FUNCIÓN ENVIAR ---
 const enviarFormulario = async () => {
-  // 1. Validar visualmente
+  // Antes de validar, limpiamos los espacios sobrantes al inicio y final de todos los campos
+  datos.value.nombre = datos.value.nombre.trim();
+  datos.value.correo = datos.value.correo.trim();
+  datos.value.mensaje = datos.value.mensaje.trim();
+
   const { valid } = await formulario.value.validate()
   if (!valid) return
 
   cargando.value = true
 
   try {
-    // 2. Enviar a la API
     const respuesta = await fetch(`${baseURL}/api/guardar-contacto`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -78,16 +87,13 @@ const enviarFormulario = async () => {
     const resultado = await respuesta.json();
 
     if (resultado.success) {
-      // Éxito
       snackbar.value = { show: true, text: '¡Mensaje enviado con éxito!', color: 'success' }
-      formulario.value.reset() // Limpiar campos
+      formulario.value.reset() 
     } else {
-      // Error de lógica
       snackbar.value = { show: true, text: 'Error: ' + resultado.message, color: 'error' }
     }
 
   } catch (error) {
-    // Error de red
     console.error(error)
     snackbar.value = { show: true, text: 'Error de conexión con el servidor', color: 'error' }
   } finally {
@@ -127,6 +133,11 @@ const enviarFormulario = async () => {
               color="#42b883"
               :rules="reglasNombre"
               counter="60"
+              @input="v => { 
+                // ESTO HACE LA MAGIA:
+                // Reemplaza cualquier cosa que NO sea letra (a-z) o espacio (\s) con nada ('')
+                datos.nombre = v.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '');
+              }"
             ></v-text-field>
           </v-col>
 
@@ -149,16 +160,11 @@ const enviarFormulario = async () => {
               prepend-inner-icon="mdi-phone"
               variant="outlined"
               color="#42b883"
-              
               :rules="reglasTelefono"
               counter="10"
-              
               @input="v => { 
-                // 1. Eliminar cualquier cosa que no sea número
                 let limpio = v.target.value.replace(/[^0-9]/g, '');
-                // 2. Cortar a máximo 10 caracteres
                 if (limpio.length > 10) limpio = limpio.slice(0, 10);
-                // 3. Actualizar el modelo
                 datos.telefono = limpio;
               }"
             ></v-text-field>
@@ -174,7 +180,7 @@ const enviarFormulario = async () => {
               :rules="reglasFecha"
               :max="fechaMax" 
             ></v-text-field>
-            </v-col>
+          </v-col>
 
           <v-col cols="12">
             <v-textarea

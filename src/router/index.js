@@ -42,6 +42,11 @@ const router = createRouter({
       name: 'registros',
       component: () => import('../views/RegistrosView.vue')
     },
+    {
+      path: '/carrusel',
+      name: 'carrusel',
+      component: () => import('../views/CarruselView.vue')
+    },
 
     // 2. RUTA COMODÍN (SIEMPRE AL FINAL DE TODO)
     // Cualquier ruta que no coincida con las de arriba, caerá aquí.

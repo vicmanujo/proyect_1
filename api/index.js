@@ -134,5 +134,76 @@ if (process.env.NODE_ENV !== 'production') {
     });
 }
 
+
+// --- IMPORTACIONES AL INICIO DEL ARCHIVO ---
+import { v2 as cloudinary } from 'cloudinary';
+import multer from 'multer';
+
+// --- CONFIGURACIÓN DE CLOUDINARY ---
+// (Lo ideal es poner esto en tu .env, pero por ahora pon tus credenciales aquí)
+cloudinary.config({ 
+  cloud_name: 'dmjc30adm', 
+  api_key: '492749368743999', 
+  api_secret: 'KoHeRq4JK64leRQuglZBitGuxPg' 
+});
+
+// Configuración de Multer (Para manejar archivos en memoria RAM temporalmente)
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+// ... (El resto de tu código de SQL y App) ...
+
+// --- RUTA 5: SUBIR IMAGEN A CLOUDINARY Y GUARDAR EN SQL ---
+app.post('/api/subir-imagen', upload.single('imagen'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: "No enviaste ninguna imagen" });
+        }
+
+        // 1. Subir a Cloudinary usando un "Stream" (Flujo de datos)
+        const subirACloudinary = () => {
+            return new Promise((resolve, reject) => {
+                const stream = cloudinary.uploader.upload_stream(
+                    { folder: "vue_demo_gallery" }, // Carpeta en Cloudinary
+                    (error, result) => {
+                        if (result) resolve(result);
+                        else reject(error);
+                    }
+                );
+                // Enviamos el buffer del archivo al stream
+                stream.end(req.file.buffer);
+            });
+        };
+
+        const resultadoCloudinary = await subirACloudinary();
+        const urlImagen = resultadoCloudinary.secure_url; // ¡Aquí está el link https!
+        const titulo = req.body.titulo || 'Sin título';
+
+        // 2. Guardar el link en SQL Server
+        let pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('titulo', sql.NVarChar(100), titulo)
+            .input('url', sql.NVarChar(sql.MAX), urlImagen)
+            .query('INSERT INTO Galeria (Titulo, ImagenUrl) VALUES (@titulo, @url)');
+
+        res.json({ success: true, message: 'Imagen subida y guardada', url: urlImagen });
+
+    } catch (error) {
+        console.error("Error subida:", error);
+        res.status(500).json({ success: false, message: 'Error al subir imagen' });
+    }
+});
+
+// --- RUTA 6: OBTENER IMÁGENES PARA EL CARRUSEL ---
+app.get('/api/galeria', async (req, res) => {
+    try {
+        let pool = await sql.connect(dbConfig);
+        const result = await pool.request().query('SELECT * FROM Galeria ORDER BY FechaSubida DESC');
+        res.json(result.recordset);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // Exportamos para Vercel
 export default app;
