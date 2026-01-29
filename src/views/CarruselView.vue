@@ -10,21 +10,21 @@ const cargando = ref(false)
 const imagenes = ref([]) 
 const snackbar = ref({ show: false, text: '', color: '' })
 
+// Regla visual para que se ponga rojo si llegan al límite (aunque maxlength no los dejará pasar)
+const reglasTitulo = [
+  v => v.length <= 15 || 'Máximo 15 caracteres'
+]
+
 // --- LÓGICA INTELIGENTE DE VALIDACIÓN ---
 const archivoSeleccionado = computed(() => {
-  // Esta función extrae el archivo real, sin importar si Vuetify lo da como array o no
   if (!archivo.value) return null;
   return Array.isArray(archivo.value) ? archivo.value[0] : archivo.value;
 });
 
 const esImagenValida = computed(() => {
   const file = archivoSeleccionado.value;
-  // 1. Si no hay archivo, botón bloqueado
   if (!file) return false;
-  // 2. Si no es imagen (ej. PDF, EXE), botón bloqueado
   if (!file.type.startsWith('image/')) return false;
-  
-  // Si pasa todo, botón DESBLOQUEADO
   return true;
 });
 
@@ -38,18 +38,22 @@ const cargarGaleria = async () => {
 }
 
 const subirImagen = async () => {
-  // Doble chequeo de seguridad
   if (!esImagenValida.value) {
     snackbar.value = { show: true, text: 'Archivo no válido', color: 'error' }
     return
+  }
+  
+  // Validación extra por si acaso
+  if (titulo.value.length > 15) {
+     snackbar.value = { show: true, text: 'El título es muy largo', color: 'warning' }
+     return
   }
 
   cargando.value = true
   
   const formData = new FormData()
-  // AQUÍ ESTABA EL ERROR ANTES: Ahora usamos la variable segura
   formData.append('imagen', archivoSeleccionado.value) 
-  formData.append('titulo', titulo.value || 'Sin título') // Si no ponen nombre, pone 'Sin título'
+  formData.append('titulo', titulo.value || 'Sin título') 
 
   try {
     const res = await fetch(`${baseURL}/api/subir-imagen`, {
@@ -60,9 +64,9 @@ const subirImagen = async () => {
 
     if (data.success) {
       snackbar.value = { show: true, text: '¡Imagen subida con éxito!', color: 'success' }
-      archivo.value = null // Limpiar input
+      archivo.value = null 
       titulo.value = ''
-      cargarGaleria() // Actualizar carrusel
+      cargarGaleria() 
     } else {
       snackbar.value = { show: true, text: 'Error: ' + data.message, color: 'error' }
     }
@@ -100,11 +104,16 @@ onMounted(() => {
 
       <v-text-field
         v-model="titulo"
-        label="Título (Opcional)"
+        label="Título (Máx 15 letras)"
         variant="outlined"
         density="compact"
         color="#42b883"
         class="mb-2"
+        
+        maxlength="15"
+        counter="15"
+        :rules="reglasTitulo"
+        @paste.prevent
       ></v-text-field>
 
       <v-file-input
