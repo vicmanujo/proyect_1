@@ -1,16 +1,33 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 
 const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 
 // Variables
-const archivo = ref(null) // El archivo seleccionado
+const archivo = ref(null) 
 const titulo = ref('')
 const cargando = ref(false)
-const imagenes = ref([]) // Lista de imágenes para el carrusel
+const imagenes = ref([]) 
 const snackbar = ref({ show: false, text: '', color: '' })
 
-// 1. Obtener imágenes al cargar
+// --- LÓGICA INTELIGENTE DE VALIDACIÓN ---
+const archivoSeleccionado = computed(() => {
+  // Esta función extrae el archivo real, sin importar si Vuetify lo da como array o no
+  if (!archivo.value) return null;
+  return Array.isArray(archivo.value) ? archivo.value[0] : archivo.value;
+});
+
+const esImagenValida = computed(() => {
+  const file = archivoSeleccionado.value;
+  // 1. Si no hay archivo, botón bloqueado
+  if (!file) return false;
+  // 2. Si no es imagen (ej. PDF, EXE), botón bloqueado
+  if (!file.type.startsWith('image/')) return false;
+  
+  // Si pasa todo, botón DESBLOQUEADO
+  return true;
+});
+
 const cargarGaleria = async () => {
   try {
     const res = await fetch(`${baseURL}/api/galeria`)
@@ -20,37 +37,38 @@ const cargarGaleria = async () => {
   }
 }
 
-// 2. Subir imagen
 const subirImagen = async () => {
-  if (!archivo.value) {
-    snackbar.value = { show: true, text: 'Selecciona una imagen primero', color: 'warning' }
+  // Doble chequeo de seguridad
+  if (!esImagenValida.value) {
+    snackbar.value = { show: true, text: 'Archivo no válido', color: 'error' }
     return
   }
 
   cargando.value = true
   
-  // Usamos FormData para enviar archivos (es diferente a JSON)
   const formData = new FormData()
-  formData.append('imagen', archivo.value) // 'imagen' debe coincidir con upload.single('imagen') del backend
-  formData.append('titulo', titulo.value)
+  // AQUÍ ESTABA EL ERROR ANTES: Ahora usamos la variable segura
+  formData.append('imagen', archivoSeleccionado.value) 
+  formData.append('titulo', titulo.value || 'Sin título') // Si no ponen nombre, pone 'Sin título'
 
   try {
     const res = await fetch(`${baseURL}/api/subir-imagen`, {
       method: 'POST',
-      body: formData // No lleva headers Content-Type, el navegador lo pone solo
+      body: formData 
     })
     const data = await res.json()
 
     if (data.success) {
       snackbar.value = { show: true, text: '¡Imagen subida con éxito!', color: 'success' }
-      archivo.value = null
+      archivo.value = null // Limpiar input
       titulo.value = ''
-      cargarGaleria() // Recargar el carrusel
+      cargarGaleria() // Actualizar carrusel
     } else {
       snackbar.value = { show: true, text: 'Error: ' + data.message, color: 'error' }
     }
 
   } catch (error) {
+    console.error(error)
     snackbar.value = { show: true, text: 'Error de conexión', color: 'error' }
   } finally {
     cargando.value = false
@@ -82,7 +100,7 @@ onMounted(() => {
 
       <v-text-field
         v-model="titulo"
-        label="Título de la imagen (Opcional)"
+        label="Título (Opcional)"
         variant="outlined"
         density="compact"
         color="#42b883"
@@ -97,8 +115,9 @@ onMounted(() => {
         color="#42b883"
         prepend-icon=""
         prepend-inner-icon="mdi-camera"
-        accept="image/*"
+        accept="image/*" 
         show-size
+        :error-messages="archivoSeleccionado && !esImagenValida ? '⛔ Archivo inválido (Solo imágenes)' : ''"
       ></v-file-input>
 
       <v-btn 
@@ -108,9 +127,12 @@ onMounted(() => {
         class="text-white font-weight-bold mt-2"
         @click="subirImagen"
         :loading="cargando"
+        :disabled="!esImagenValida"
       >
-        Subir Imagen
-        <v-icon end>mdi-arrow-up-bold</v-icon>
+        <v-icon start v-if="!esImagenValida">mdi-lock</v-icon>
+        <v-icon start v-else>mdi-arrow-up-bold</v-icon>
+        
+        {{ !esImagenValida ? 'Selecciona una imagen válida' : 'Subir Imagen' }}
       </v-btn>
     </v-card>
 
@@ -158,7 +180,6 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* Estilo para que el fondo semitransparente del título se vea bien */
 .opacity-75 {
   background-color: rgba(0, 0, 0, 0.6) !important;
 }
