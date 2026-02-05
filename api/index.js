@@ -205,5 +205,57 @@ app.get('/api/galeria', async (req, res) => {
     }
 });
 
+
+// --- RUTA: ELIMINAR CONTACTO (DELETE) ---
+app.delete('/api/eliminar-contacto/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        let pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('id', sql.Int, id)
+            .query('DELETE FROM FormularioContacto WHERE ID = @id');
+        
+        res.json({ success: true, message: 'Registro eliminado' });
+    } catch (err) {
+        res.status(500).json({ success: false, message: 'Error al eliminar' });
+    }
+});
+
+// --- RUTA: ACTUALIZAR CONTACTO (PUT) ---
+
+
+// --- ACTUALIZAR CONTACTO (PUT) - VERSIÓN A PRUEBA DE ERRORES ---
+app.put('/api/actualizar-contacto/:id', async (req, res) => {
+    const { id } = req.params;
+    
+    // 🟢 EL TRUCO: Leemos Mayúsculas (Frontend) O Minúsculas (Postman/Test)
+    // Así no importa cómo lo mandes, el servidor lo entiende.
+    const nombre = req.body.Nombre || req.body.nombre;
+    const correo = req.body.Correo || req.body.correo;
+    const telefono = req.body.Telefono || req.body.telefono;
+    const mensaje = req.body.Mensaje || req.body.mensaje;
+
+    console.log("Editando ID:", id, "Datos:", { nombre, correo, telefono, mensaje });
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('id', sql.Int, id)
+            .input('nombre', sql.NVarChar(60), nombre)
+            .input('correo', sql.NVarChar(100), correo)
+            .input('telefono', sql.VarChar(10), telefono)
+            .input('mensaje', sql.NVarChar(300), mensaje)
+            .query(`
+                UPDATE FormularioContacto 
+                SET Nombre = @nombre, Correo = @correo, Telefono = @telefono, Mensaje = @mensaje
+                WHERE ID = @id
+            `);
+
+        res.json({ success: true, message: 'Registro actualizado' });
+    } catch (err) {
+        console.error("Error al actualizar:", err);
+        res.status(500).json({ success: false, message: 'Error al actualizar' });
+    }
+});
 // Exportamos para Vercel
 export default app;
