@@ -1,87 +1,88 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router' // 1. Importamos useRoute
+import { RouterView, useRoute } from 'vue-router'
 
-const route = useRoute() // 2. Obtenemos la ruta actual
+const route = useRoute()
+const drawer = ref(false) // 🟢 Variable para abrir/cerrar menú en celular
 
 // Menú de usuario
 const items = [
   { title: 'Iniciar sesión', to: '/login', icon: 'mdi-login' },
-  { title: 'Registrarte', to: '/register', icon: 'mdi-account-plus' }
+  { title: 'Registrarte', to: '/register', icon: 'mdi-account-plus' },
 ]
 
-// Menú de demos
+// Menú de demos (Aquí agregué 'Registros')
 const demos = [
   { title: 'Calculadora', to: '/calculadora', icon: 'mdi-calculator' },
   { title: 'Formulario', to: '/formulario', icon: 'mdi-form-select' },
+  { title: 'Crud', to: '/registros', icon: 'mdi-database' }, // 🟢 ¡Agregado!
   { title: 'Carrusel', to: '/carrusel', icon: 'mdi-view-carousel' },
   { title: 'Página Error', to: '/error', icon: 'mdi-alert-circle' },
 ]
 
-// 3. LÓGICA PARA LAS MIGAS DE PAN (BREADCRUMBS)
+// Migas de pan (Breadcrumbs)
 const breadcrumbs = computed(() => {
   const currentPath = route.path
-  
-  // Base: Siempre empezamos en Inicio
-  const crumbs = [
-    {
-      title: 'Inicio',
-      disabled: false,
-      to: '/',
-      icon: 'mdi-home',
-      color: 'grey-darken-1'
-    }
-  ]
-
-  // Si estamos en el inicio, no mostramos nada más
+  const crumbs = [{ title: 'Inicio', disabled: false, to: '/', icon: 'mdi-home', color: 'grey-darken-1' }]
   if (currentPath === '/') return crumbs
 
-  // Verificamos si la ruta actual es una de las "Demos"
   const esDemo = demos.find(d => d.to === currentPath)
 
   if (esDemo) {
-    // Si es demo, agregamos el nivel "Demos" (que no lleva link, es solo visual)
-    crumbs.push({
-      title: 'Demos',
-      disabled: true,
-      color: 'grey'
-    })
-    // Y luego la página actual
-    crumbs.push({
-      title: esDemo.title,
-      disabled: true,
-      color: '#42b883' // Verde Vue
-    })
+    crumbs.push({ title: 'Demos', disabled: true, color: 'grey' })
+    crumbs.push({ title: esDemo.title, disabled: true, color: '#42b883' })
   } else {
-    // Si NO es demo (ej: Login, Hola Mundo, etc.)
-    // Buscamos el nombre bonito (Mapping manual simple)
     let nombre = 'Página Actual'
     if (currentPath === '/login') nombre = 'Iniciar Sesión'
     if (currentPath === '/register') nombre = 'Registro'
     if (currentPath === '/hola-mundo') nombre = 'Hola Mundo'
     if (currentPath === '/captcha') nombre = 'Captcha'
-    if (currentPath === '/registros') nombre = 'Registros de BD'
-
-    crumbs.push({
-      title: nombre,
-      disabled: true,
-      color: '#42b883'
-    })
+    
+    crumbs.push({ title: nombre, disabled: true, color: '#42b883' })
   }
-
   return crumbs
 })
 </script>
 
 <template>
   <v-app theme="light"> 
-    <v-app-bar 
-      elevation="1" 
-      color="#35495e" 
-      class="text-white"
+
+    <v-navigation-drawer
+      v-model="drawer"
+      temporary
+      location="left"
     >
+      <v-list>
+        <v-list-subheader>NAVEGACIÓN</v-list-subheader>
+        
+        <v-list-item to="/" prepend-icon="mdi-home" title="Inicio"></v-list-item>
+        <v-list-item to="/hola-mundo" prepend-icon="mdi-hand-wave" title="Hola Mundo"></v-list-item>
+        <v-list-item to="/captcha" prepend-icon="mdi-robot" title="Captcha"></v-list-item>
+
+        <v-divider class="my-2"></v-divider>
+        <v-list-subheader>DEMOS</v-list-subheader>
+
+        <v-list-item 
+            v-for="(demo, i) in demos" 
+            :key="i" 
+            :to="demo.to" 
+            :prepend-icon="demo.icon" 
+            :title="demo.title"
+        ></v-list-item>
+      </v-list>
+    </v-navigation-drawer>
+
+
+    <v-app-bar elevation="1" color="#35495e" class="text-white">
+      
+      <v-app-bar-nav-icon 
+        class="d-md-none" 
+        variant="text" 
+        @click.stop="drawer = !drawer"
+      ></v-app-bar-nav-icon>
+
       <template v-slot:prepend>
-        <v-icon color="#42b883" size="large" class="ml-2">mdi-vuejs</v-icon>
+        <v-icon color="#42b883" size="large" class="ml-2 d-none d-md-flex">mdi-vuejs</v-icon>
       </template>
 
       <v-app-bar-title class="font-weight-bold">
@@ -97,24 +98,13 @@ const breadcrumbs = computed(() => {
 
         <v-menu open-on-hover>
           <template v-slot:activator="{ props }">
-            <v-btn 
-              v-bind="props" 
-              color="#42b883" 
-              variant="text" 
-              append-icon="mdi-chevron-down"
-              class="text-capitalize font-weight-bold"
-            >
+            <v-btn v-bind="props" color="#42b883" variant="text" append-icon="mdi-chevron-down" class="text-capitalize font-weight-bold">
               Demos
             </v-btn>
           </template>
 
           <v-list elevation="3" density="compact">
-            <v-list-item
-              v-for="(demo, i) in demos"
-              :key="i"
-              :to="demo.to"
-              active-color="green"
-            >
+            <v-list-item v-for="(demo, i) in demos" :key="i" :to="demo.to" active-color="green">
               <template v-slot:prepend>
                 <v-icon :icon="demo.icon" color="grey-darken-2"></v-icon>
               </template>
@@ -125,8 +115,6 @@ const breadcrumbs = computed(() => {
       </div>
 
       <v-spacer></v-spacer>
-
-      <v-btn icon="mdi-magnify" class="mr-1"></v-btn>
       
       <v-menu transition="scale-transition" location="bottom end">
         <template v-slot:activator="{ props }">
@@ -139,15 +127,9 @@ const breadcrumbs = computed(() => {
 
         <v-list density="compact" width="200">
           <v-list-subheader class="text-uppercase font-weight-bold text-caption">Cuenta</v-list-subheader>
-          <v-list-item
-            v-for="(item, i) in items"
-            :key="i"
-            :to="item.to"
-            link
-            active-color="primary"
-          >
+          <v-list-item v-for="(item, i) in items" :key="i" :to="item.to" link active-color="primary">
             <template v-slot:prepend>
-              <v-icon :item="item.icon" size="small"></v-icon>
+              <v-icon :icon="item.icon" size="small"></v-icon>
             </template>
             <v-list-item-title>{{ item.title }}</v-list-item-title>
           </v-list-item>
@@ -181,7 +163,5 @@ const breadcrumbs = computed(() => {
 </template>
 
 <style scoped>
-.v-btn {
-  letter-spacing: 0.5px;
-}
+.v-btn { letter-spacing: 0.5px; }
 </style>

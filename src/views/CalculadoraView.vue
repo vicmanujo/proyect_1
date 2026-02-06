@@ -15,7 +15,6 @@ const sumar = () => {
     errorMsg.value = "Por favor ingresa ambos números"
     return
   }
-  
   resultado.value = num1.value + num2.value
 }
 

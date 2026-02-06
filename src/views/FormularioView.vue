@@ -48,7 +48,11 @@ const reglasTelefono = [
 
 // 4. Fecha
 const reglasFecha = [
-  v => !!v || 'La fecha de nacimiento es obligatoria'
+  v => !!v || 'La fecha de nacimiento es obligatoria',
+  v => {
+      if (!v) return true;
+      return v <= fechaMax.value || 'No puedes seleccionar una fecha futura';
+  }
 ]
 
 // 5. Mensaje: 
