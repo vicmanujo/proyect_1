@@ -234,6 +234,7 @@ app.put('/api/actualizar-contacto/:id', async (req, res) => {
     const correo = req.body.Correo || req.body.correo;
     const telefono = req.body.Telefono || req.body.telefono;
     const mensaje = req.body.Mensaje || req.body.mensaje;
+    const fechaNacimiento = req.body.FechaNacimiento || req.body.fechaNacimiento;
 
     console.log("Editando ID:", id, "Datos:", { nombre, correo, telefono, mensaje });
 
@@ -245,9 +246,10 @@ app.put('/api/actualizar-contacto/:id', async (req, res) => {
             .input('correo', sql.NVarChar(100), correo)
             .input('telefono', sql.VarChar(10), telefono)
             .input('mensaje', sql.NVarChar(300), mensaje)
+            .input('fechaNacimiento', sql.Date, fechaNacimiento)
             .query(`
                 UPDATE FormularioContacto 
-                SET Nombre = @nombre, Correo = @correo, Telefono = @telefono, Mensaje = @mensaje
+                SET Nombre = @nombre, Correo = @correo, Telefono = @telefono, Mensaje = @mensaje, FechaNacimiento = @fechaNacimiento
                 WHERE ID = @id
             `);
 
