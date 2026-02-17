@@ -42,7 +42,7 @@ app.post('/api/validar-insertar', async (req, res) => {
         });
         
         if (!googleResponse.data.success) {
-            return res.json({ success: false, message: 'Eres un robot 🤖' });
+            return res.json({ success: false, message: 'Eres un robot' });
         }
 
         // Conexión a SQL
@@ -95,7 +95,7 @@ app.post('/api/guardar-contacto', async (req, res) => {
             .input('nombre', sql.NVarChar(60), nombre)
             .input('correo', sql.NVarChar(100), correo)
             
-            // Usamos la variable segura aquí 👇
+            // Usamos la variable segura aquí 
             .input('telefono', sql.VarChar(10), telefonoSeguro) 
             
             .input('fechaNacimiento', sql.Date, fechaNacimiento)

@@ -5,22 +5,49 @@ const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 const registros = ref([]);
 const loading = ref(true);
 
+// --- VARIABLES PARA FILTROS ---
+const busqueda = ref('');       
+const fechaInicio = ref(null);  
+const fechaFin = ref(null);     
+
 // Variables del Formulario Modal
 const dialogoFormulario = ref(false);
 const itemFormulario = ref({}); 
 const cargandoGuardar = ref(false);
 const esEdicion = ref(false);
-const formDialog = ref(null); // Referencia para validar el formulario del modal
-const valido = ref(false); // Estado de validez del formulario
+const formDialog = ref(null); 
+const valido = ref(false);
 
+// Fecha máxima (Hoy)
 const fechaMax = computed(() => {
   const hoy = new Date();
-  return hoy.toISOString().split('T')[0]; // Formato YYYY-MM-DD
+  return hoy.toISOString().split('T')[0];
 });
 
-// --- 🛡️ TUS REGLAS DE VALIDACIÓN ESTRICTAS ---
+// --- LÓGICA DE FILTRADO ---
+const registrosFiltrados = computed(() => {
+    return registros.value.filter(item => {
+        // 1. Filtro por Texto
+        const texto = busqueda.value.toLowerCase();
+        const coincideTexto = 
+            item.Nombre.toLowerCase().includes(texto) ||
+            item.Correo.toLowerCase().includes(texto) ||
+            item.Telefono.includes(texto);
 
-// 1. Nombre
+        // 2. Filtro por Rango de Fechas
+        let coincideFecha = true;
+        if (fechaInicio.value && fechaFin.value && item.FechaNacimiento) {
+            const fechaItem = new Date(item.FechaNacimiento).setHours(0,0,0,0);
+            const fInicio = new Date(fechaInicio.value).setHours(0,0,0,0);
+            const fFin = new Date(fechaFin.value).setHours(0,0,0,0);
+
+            coincideFecha = fechaItem >= fInicio && fechaItem <= fFin;
+        }
+        return coincideTexto && coincideFecha;
+    });
+});
+
+// --- REGLAS DE VALIDACIÓN ---
 const reglasNombre = [
   v => !!v || 'El nombre es obligatorio',
   v => (v && v.trim().length > 0) || 'El nombre no puede ser solo espacios',
@@ -28,29 +55,21 @@ const reglasNombre = [
   v => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(v) || 'Solo se permiten letras'
 ];
 
-// 2. Correo
 const reglasCorreo = [
   v => !!v || 'El correo es obligatorio',
-  v => (v && v.trim().length > 0) || 'No espacios vacíos',
-  v => (v && v.length <= 100) || 'Máximo 100 caracteres',
   v => /.+@.+\..+/.test(v) || 'Correo inválido'
 ];
 
-// 3. Teléfono
 const reglasTelefono = [
   v => !!v || 'El teléfono es obligatorio',
-  v => /^[0-9]+$/.test(v) || 'Solo números',
   v => (v && v.length === 10) || 'Exactamente 10 dígitos'
 ];
 
-// 4. Mensaje
 const reglasMensaje = [
   v => !!v || 'El mensaje es obligatorio',
-  v => (v && v.trim().length > 0) || 'No puede estar vacío',
   v => (v && v.length <= 300) || 'Máximo 300 caracteres'
 ];
 
-// 5. Fecha (Opcional en edición, obligatoria al crear)
 const reglasFecha = [
   v => !!v || 'La fecha es obligatoria',
   v => {
@@ -84,8 +103,6 @@ const eliminarItem = async (id) => {
   }
 }
 
-// --- LÓGICA DEL MODAL ---
-
 const abrirCrear = () => {
     itemFormulario.value = {}; 
     esEdicion.value = false;   
@@ -94,7 +111,6 @@ const abrirCrear = () => {
 
 const abrirEditar = (item) => {
     itemFormulario.value = { ...item }; 
-    // Aseguramos que la fecha tenga formato correcto para el input type="date"
     if (itemFormulario.value.FechaNacimiento) {
         itemFormulario.value.FechaNacimiento = itemFormulario.value.FechaNacimiento.split('T')[0];
     }
@@ -103,14 +119,10 @@ const abrirEditar = (item) => {
 }
 
 const guardarDatos = async () => {
-    // 1. Limpieza de espacios (Trim)
     if(itemFormulario.value.Nombre) itemFormulario.value.Nombre = itemFormulario.value.Nombre.trim();
-    if(itemFormulario.value.Correo) itemFormulario.value.Correo = itemFormulario.value.Correo.trim();
-    if(itemFormulario.value.Mensaje) itemFormulario.value.Mensaje = itemFormulario.value.Mensaje.trim();
-
-    // 2. Ejecutar validaciones
+    
     const { valid } = await formDialog.value.validate();
-    if (!valid) return; // Si falla, se detiene aquí y no guarda
+    if (!valid) return; 
 
     cargandoGuardar.value = true;
     
@@ -125,17 +137,13 @@ const guardarDatos = async () => {
             url = `${baseURL}/api/guardar-contacto`;
             metodo = 'POST';
             
-            // Usamos nombres en minúscula para el POST si es nuevo, o mapeamos al formato que espera tu backend
-            // Truco: Para el POST de nuevo contacto, tu backend espera: nombre, correo, telefono...
-            // Para el PUT de editar, espera: Nombre, Correo... (o la lógica mixta que hicimos)
-            // Vamos a normalizar enviando un objeto limpio:
             itemFormulario.value = {
-                nombre: itemFormulario.value.Nombre, // Mapeamos Nombre -> nombre por seguridad
+                nombre: itemFormulario.value.Nombre, 
                 correo: itemFormulario.value.Correo,
                 telefono: itemFormulario.value.Telefono,
                 mensaje: itemFormulario.value.Mensaje,
                 fechaNacimiento: itemFormulario.value.FechaNacimiento,
-                ...itemFormulario.value // Mantenemos el resto por si acaso
+                ...itemFormulario.value 
             };
         }
 
@@ -149,12 +157,10 @@ const guardarDatos = async () => {
 
         if (data.success) {
             if (!esEdicion.value) {
-                await cargarContactos(); // Recargar lista si es nuevo
+                await cargarContactos(); 
             } else {
-                // Actualizar localmente si es edición
                 const index = registros.value.findIndex(r => r.ID === itemFormulario.value.ID);
                 if (index !== -1) {
-                    // Actualizamos visualmente
                     registros.value[index] = { 
                         ...registros.value[index], 
                         ...itemFormulario.value 
@@ -173,6 +179,12 @@ const guardarDatos = async () => {
     }
 }
 
+const limpiarFiltros = () => {
+    busqueda.value = '';
+    fechaInicio.value = null;
+    fechaFin.value = null;
+}
+
 onMounted(() => {
   cargarContactos();
 });
@@ -183,48 +195,111 @@ onMounted(() => {
     
     <div class="text-center mb-6">
       <v-avatar color="#42b883" size="50" class="mb-3 elevation-2">
-        <v-icon color="white">mdi-database-edit</v-icon>
+        <v-icon color="white">mdi-database-search</v-icon>
       </v-avatar>
-      <h2 class="text-h4 font-weight-bold text-grey-darken-3">Administrar Crud</h2>
+      <h2 class="text-h4 font-weight-bold text-grey-darken-3">Crud</h2>
     </div>
 
-    <div class="d-flex justify-end w-100 max-width-1100 mb-4" style="max-width: 1100px;">
-        <v-btn 
-            color="#42b883" 
-            prepend-icon="mdi-plus" 
-            class="text-white font-weight-bold" 
-            rounded="lg"
-            elevation="4"
-            @click="abrirCrear"
-        >
-            Agregar Nuevo
-        </v-btn>
-    </div>
+    <v-card width="100%" max-width="1100" class="mb-6 pa-5" elevation="3" rounded="xl">
+        
+        <v-row dense>
+            <v-col cols="12">
+                <v-text-field
+                    v-model="busqueda"
+                    label="Buscar por Nombre, Correo, Teléfono, etc"
+                    prepend-inner-icon="mdi-magnify"
+                    variant="outlined"
+                    density="comfortable"
+                    color="#42b883"
+                    hide-details
+                    clearable
+                    class="mb-2"
+                ></v-text-field>
+            </v-col>
+        </v-row>
+
+        <v-row dense align="center">
+            <v-col cols="12" md="4">
+                <v-text-field
+                    v-model="fechaInicio"
+                    label="Desde fecha"
+                    type="date"
+                    variant="outlined"
+                    density="compact"
+                    color="#42b883"
+                    hide-details
+                ></v-text-field>
+            </v-col>
+
+            <v-col cols="12" md="4">
+                <v-text-field
+                    v-model="fechaFin"
+                    label="Hasta fecha"
+                    type="date"
+                    variant="outlined"
+                    density="compact"
+                    color="#42b883"
+                    hide-details
+                ></v-text-field>
+            </v-col>
+
+            <v-col cols="12" md="4" class="d-flex justify-end gap-2 align-center">
+                 <v-btn 
+                    variant="tonal" 
+                    color="grey-darken-1" 
+                    @click="limpiarFiltros" 
+                    prepend-icon="mdi-filter-off"
+                    class="text-capitalize"
+                >
+                    Limpiar
+                </v-btn>
+
+                <v-btn 
+                    color="#42b883" 
+                    prepend-icon="mdi-plus" 
+                    class="text-white font-weight-bold" 
+                    elevation="2"
+                    @click="abrirCrear"
+                >
+                    Nuevo
+                </v-btn>
+            </v-col>
+        </v-row>
+    </v-card>
 
     <v-card elevation="10" rounded="xl" width="100%" max-width="1100" border class="overflow-x-auto">
       <v-table fixed-header height="500px" hover style="min-width: 900px;">
         <thead>
           <tr style="background-color: #35495e;">
-            <th class="text-white font-weight-bold">ID</th>
-            <th class="text-white font-weight-bold">Nombre</th>
+            <th class="text-white font-weight-bold pl-6">Nombre</th>
             <th class="text-white font-weight-bold">Contacto</th>
+            <th class="text-white font-weight-bold">Nacimiento</th>
             <th class="text-white font-weight-bold">Mensaje</th>
             <th class="text-white font-weight-bold text-center" style="width: 120px;">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in registros" :key="item.ID">
-            <td class="font-weight-bold text-grey">{{ item.ID }}</td>
-            <td class="text-capitalize font-weight-bold text-grey-darken-3">{{ item.Nombre }}</td>
-            <td>
+          <tr v-for="item in registrosFiltrados" :key="item.ID">
+            
+            <td class="text-capitalize font-weight-bold text-grey-darken-3 pl-6">
+                {{ item.Nombre }}
+            </td>
+            
+            <td class="text-grey-darken-3">
               <div class="d-flex flex-column py-2">
-                <small class="text-grey-darken-2"><v-icon size="small" start color="#42b883">mdi-email</v-icon>{{ item.Correo }}</small>
-                <small class="text-grey-darken-2 mt-1"><v-icon size="small" start color="#42b883">mdi-phone</v-icon>{{ item.Telefono }}</small>
+                <div><v-icon size="small" start class="text-grey-darken-3">mdi-email</v-icon>{{ item.Correo }}</div>
+                <div class="mt-1"><v-icon size="small" start class="text-grey-darken-3">mdi-phone</v-icon>{{ item.Telefono }}</div>
               </div>
             </td>
-            <td style="max-width: 200px;">
-              <div class="text-truncate text-grey-darken-2">{{ item.Mensaje }}</div>
+
+            <td class="text-grey-darken-3">
+                {{ new Date(item.FechaNacimiento).toLocaleDateString('es-MX') }}
             </td>
+
+            <td class="text-grey-darken-3" style="max-width: 200px;">
+              <div class="text-truncate">{{ item.Mensaje }}</div>
+            </td>
+            
             <td class="text-center">
                 <v-btn icon size="small" color="blue" variant="text" @click="abrirEditar(item)" class="mr-2">
                     <v-icon>mdi-pencil</v-icon>
@@ -234,8 +309,12 @@ onMounted(() => {
                 </v-btn>
             </td>
           </tr>
-          <tr v-if="registros.length === 0 && !loading">
-            <td colspan="5" class="text-center pa-10 text-grey">No hay registros aún</td>
+          
+          <tr v-if="registrosFiltrados.length === 0 && !loading">
+            <td colspan="5" class="text-center pa-10 text-grey">
+                <v-icon size="40" class="mb-2">mdi-magnify-remove-outline</v-icon>
+                <div>No se encontraron registros</div>
+            </td>
           </tr>
         </tbody>
       </v-table>
@@ -244,7 +323,7 @@ onMounted(() => {
     <v-dialog v-model="dialogoFormulario" max-width="500" persistent>
         <v-card rounded="xl" class="pa-4">
             <v-card-title class="text-h5 font-weight-bold text-grey-darken-3">
-                {{ esEdicion ? `Editar Registro #${itemFormulario.ID}` : 'Nuevo Registro' }}
+                {{ esEdicion ? `Editar Registro` : 'Nuevo Registro' }}
             </v-card-title>
             
             <v-card-text>
@@ -295,6 +374,7 @@ onMounted(() => {
                         color="#42b883" 
                         class="mb-2"
                         :rules="reglasFecha"
+                        :max="fechaMax"
                     ></v-text-field>
 
                     <v-textarea 
@@ -329,8 +409,10 @@ onMounted(() => {
 </template>
 
 <style scoped>
-/* Asegura que el scroll horizontal funcione bien */
 .overflow-x-auto {
     overflow-x: auto !important;
+}
+.gap-2 {
+    gap: 12px;
 }
 </style>

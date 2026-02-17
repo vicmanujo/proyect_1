@@ -25,7 +25,7 @@ const datos = ref({
 // - Regex de solo letras (doble seguridad)
 const reglasNombre = [
   v => !!v || 'El nombre es obligatorio',
-  v => (v && v.trim().length > 0) || 'El nombre no puede ser solo espacios', // 🚫 NUEVA REGLA
+  v => (v && v.trim().length > 0) || 'El nombre no puede ser solo espacios', //  NUEVA REGLA
   v => (v && v.length <= 60) || 'Máximo 60 caracteres',
   v => /^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/.test(v) || 'Solo se permiten letras'
 ]
@@ -34,7 +34,7 @@ const reglasNombre = [
 // - No acepta espacios vacíos
 const reglasCorreo = [
   v => !!v || 'El correo es obligatorio',
-  v => (v && v.trim().length > 0) || 'El correo no puede tener espacios vacíos', // 🚫 NUEVA REGLA
+  v => (v && v.trim().length > 0) || 'El correo no puede tener espacios vacíos', //  NUEVA REGLA
   v => (v && v.length <= 100) || 'Máximo 100 caracteres',
   v => /.+@.+\..+/.test(v) || 'El correo debe ser válido'
 ]
@@ -59,7 +59,7 @@ const reglasFecha = [
 // - No acepta solo espacios (evita mensajes vacíos disfrazados)
 const reglasMensaje = [
   v => !!v || 'El mensaje es obligatorio',
-  v => (v && v.trim().length > 0) || 'El mensaje no puede estar vacío', // 🚫 NUEVA REGLA
+  v => (v && v.trim().length > 0) || 'El mensaje no puede estar vacío', // NUEVA REGLA
   v => (v && v.length <= 300) || 'Máximo 300 caracteres'
 ]
 
