@@ -5,6 +5,10 @@ import express from 'express';
 import sql from 'mssql';
 import cors from 'cors';
 import axios from 'axios';
+import bcrypt from 'bcryptjs';
+
+import jwt from 'jsonwebtoken';
+import nodemailer from 'nodemailer';
 
 const app = express();
 
@@ -259,5 +263,301 @@ app.put('/api/actualizar-contacto/:id', async (req, res) => {
         res.status(500).json({ success: false, message: 'Error al actualizar' });
     }
 });
+
+
+app.post('/api/registro', async (req, res) => {
+    const { correo, password } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        
+        // 1. Verificar si el correo ya existe
+        const existe = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID FROM Usuarios WHERE Correo = @correo');
+            
+        if (existe.recordset.length > 0) {
+            return res.status(400).json({ success: false, message: 'El correo ya está registrado' });
+        }
+
+        // 2. Encriptar la contraseña
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
+
+        // 3. Guardar en la base de datos
+        await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .input('passwordHash', sql.NVarChar(255), passwordHash)
+            .query('INSERT INTO Usuarios (Correo, PasswordHash) VALUES (@correo, @passwordHash)');
+
+        res.json({ success: true, message: 'Usuario registrado con éxito' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error en el servidor' });
+    }
+});
+
+
+
+
+
+// ==========================================
+// 1. RUTA: REGISTRO PASO 1 (Enviar Código)
+// ==========================================
+app.post('/api/registro-paso1', async (req, res) => {
+    const { correo, password } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        
+        // Revisar si ya existe
+        const existe = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID, Verificado FROM Usuarios WHERE Correo = @correo');
+            
+        if (existe.recordset.length > 0) {
+            if (existe.recordset[0].Verificado) {
+                return res.status(400).json({ success: false, message: 'El correo ya está registrado y verificado.' });
+            } else {
+                // Si existe pero no está verificado, le borramos el registro viejo para que empiece de nuevo
+                await pool.request()
+                    .input('correo', sql.NVarChar(100), correo)
+                    .query('DELETE FROM Usuarios WHERE Correo = @correo');
+            }
+        }
+
+        // Encriptar password
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(password, salt);
+
+        // Generar código de 6 dígitos
+        const codigoVerificacion = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Guardar usuario como NO VERIFICADO (Verificado = 0)
+        await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .input('passwordHash', sql.NVarChar(255), passwordHash)
+            .input('codigo', sql.NVarChar(10), codigoVerificacion)
+            .query(`
+                INSERT INTO Usuarios (Correo, PasswordHash, Verificado, CodigoVerificacion) 
+                VALUES (@correo, @passwordHash, 0, @codigo)
+            `);
+
+        // Enviar el correo usando tu transporter de Gmail
+        const mailOptions = {
+            from: '"Sistema Vue" <josevictormanuel619@gmail.com>', // Pon tu correo
+            to: correo,
+            subject: 'Tu código de verificación',
+            html: `
+                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+                    <h2>¡Verifica tu cuenta!</h2>
+                    <p>Tu código de seguridad de 6 dígitos es:</p>
+                    <h1 style="color: #42b883; font-size: 40px; letter-spacing: 5px;">${codigoVerificacion}</h1>
+                    <p>Ingresa este código en la pantalla de registro.</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+
+        res.json({ success: true, message: 'Código enviado a tu correo' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error al enviar el código' });
+    }
+});
+
+// ==========================================
+// 2. RUTA: REGISTRO PASO 2 (Validar Código)
+// ==========================================
+app.post('/api/registro-paso2', async (req, res) => {
+    const { correo, codigo } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        const resultado = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID, CodigoVerificacion FROM Usuarios WHERE Correo = @correo');
+
+        const usuario = resultado.recordset[0];
+
+        if (!usuario) {
+            return res.status(400).json({ success: false, message: 'Usuario no encontrado' });
+        }
+
+        if (usuario.CodigoVerificacion !== codigo) {
+            return res.status(400).json({ success: false, message: 'El código es incorrecto' });
+        }
+
+        // Si el código es correcto, marcamos como verificado y borramos el código de seguridad
+        await pool.request()
+            .input('id', sql.Int, usuario.ID)
+            .query('UPDATE Usuarios SET Verificado = 1, CodigoVerificacion = NULL WHERE ID = @id');
+
+        res.json({ success: true, message: '¡Cuenta verificada exitosamente!' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error en el servidor' });
+    }
+});
+
+// ==========================================
+// 3. RUTA: LOGIN (Actualizada por seguridad)
+// ==========================================
+app.post('/api/login', async (req, res) => {
+    const { correo, password } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        const resultado = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID, Correo, PasswordHash, Verificado FROM Usuarios WHERE Correo = @correo');
+            
+        const usuario = resultado.recordset[0];
+
+        if (!usuario) return res.status(400).json({ success: false, message: 'Correo o contraseña incorrectos' });
+
+        // 🟢 NUEVO: Bloquear si no ha verificado su correo
+        if (!usuario.Verificado) {
+            return res.status(403).json({ success: false, message: 'Tu cuenta aún no está verificada. Revisa tu correo.' });
+        }
+
+        const esCorrecta = await bcrypt.compare(password, usuario.PasswordHash);
+        if (!esCorrecta) return res.status(400).json({ success: false, message: 'Correo o contraseña incorrectos' });
+
+        const SECRET_KEY = process.env.JWT_SECRET || 'qmfk znsx frhc gzjt';
+        const token = jwt.sign({ id: usuario.ID, correo: usuario.Correo }, SECRET_KEY, { expiresIn: '2h' });
+
+        res.json({ success: true, message: '¡Bienvenido!', token, usuario: { id: usuario.ID, correo: usuario.Correo } });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error en el servidor' });
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+// --- CONFIGURACIÓN DE NODEMAILER (GMAIL) ---
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: 'josevictormanuel619@gmail.com', // ⚠️ Pon tu correo aquí
+        pass: 'qmfk znsx frhc gzjt' // ⚠️ No es tu contraseña normal (Te explico abajo)
+    }
+});
+
+
+
+
+// ==========================================
+// 4. RUTAS: RECUPERAR CONTRASEÑA
+// ==========================================
+
+// A. SOLICITAR CÓDIGO (Enviar Correo)
+app.post('/api/olvide-password', async (req, res) => {
+    const { correo } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        const resultado = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID FROM Usuarios WHERE Correo = @correo');
+
+        if (resultado.recordset.length === 0) {
+            // No decimos "no existe" por seguridad contra hackers, fingimos que todo salió bien
+            return res.json({ success: true, message: 'Si el correo existe, recibirás un código.' });
+        }
+
+        const usuario = resultado.recordset[0];
+        const codigoReset = Math.floor(100000 + Math.random() * 900000).toString();
+        
+        // Expiración: 15 minutos
+        const expiracion = new Date();
+        expiracion.setMinutes(expiracion.getMinutes() + 15);
+
+        await pool.request()
+            .input('id', sql.Int, usuario.ID)
+            .input('codigo', sql.NVarChar(255), codigoReset)
+            .input('exp', sql.DateTime, expiracion)
+            .query('UPDATE Usuarios SET ResetToken = @codigo, ResetTokenExp = @exp WHERE ID = @id');
+
+        const mailOptions = {
+            from: '"Soporte Sistema" <josss@gmail.com>',
+            to: correo,
+            subject: 'Recuperación de Contraseña',
+            html: `
+                <div style="font-family: Arial, sans-serif; text-align: center; padding: 20px;">
+                    <h2>Recuperación de cuenta</h2>
+                    <p>Tu código para restablecer la contraseña es:</p>
+                    <h1 style="color: #42b883; font-size: 40px; letter-spacing: 5px;">${codigoReset}</h1>
+                    <p>Este código <b>expirará en 15 minutos</b>.</p>
+                </div>
+            `
+        };
+
+        await transporter.sendMail(mailOptions);
+        res.json({ success: true, message: 'Código enviado a tu correo' });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error al procesar la solicitud' });
+    }
+});
+
+// B. ACTUALIZAR CONTRASEÑA (Validar Código + Guardar)
+app.post('/api/reset-password', async (req, res) => {
+    const { correo, codigo, nuevaPassword } = req.body;
+
+    try {
+        let pool = await sql.connect(dbConfig);
+        const resultado = await pool.request()
+            .input('correo', sql.NVarChar(100), correo)
+            .query('SELECT ID, ResetToken, ResetTokenExp FROM Usuarios WHERE Correo = @correo');
+
+        const usuario = resultado.recordset[0];
+
+        // Validaciones de seguridad
+        if (!usuario || usuario.ResetToken !== codigo) {
+            return res.status(400).json({ success: false, message: 'El código es incorrecto o inválido.' });
+        }
+
+        const ahora = new Date();
+        if (ahora > new Date(usuario.ResetTokenExp)) {
+            return res.status(400).json({ success: false, message: 'El código ha expirado. Solicita uno nuevo.' });
+        }
+
+        // Encriptar la nueva contraseña
+        const salt = await bcrypt.genSalt(10);
+        const passwordHash = await bcrypt.hash(nuevaPassword, salt);
+
+        // Actualizar contraseña y borrar el código temporal por seguridad
+        await pool.request()
+            .input('id', sql.Int, usuario.ID)
+            .input('passwordHash', sql.NVarChar(255), passwordHash)
+            .query('UPDATE Usuarios SET PasswordHash = @passwordHash, ResetToken = NULL, ResetTokenExp = NULL WHERE ID = @id');
+
+        res.json({ success: true, message: '¡Contraseña actualizada con éxito!' });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ success: false, message: 'Error en el servidor' });
+    }
+});
+
+
+
+
+
+
 // Exportamos para Vercel
 export default app;

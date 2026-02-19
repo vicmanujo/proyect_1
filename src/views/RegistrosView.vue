@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue'; // 🟢 Importamos watch
 
 const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
 const registros = ref([]);
@@ -10,6 +10,12 @@ const busqueda = ref('');
 const fechaInicio = ref(null);  
 const fechaFin = ref(null);     
 
+// --- VARIABLES PARA PAGINACIÓN Y ORDEN ---
+const paginaActual = ref(1);
+const elementosPorPagina = 5;
+const ordenColumna = ref('Nombre'); // Columna por defecto a ordenar
+const ordenAscendente = ref(true);  // true = A-Z, false = Z-A
+
 // Variables del Formulario Modal
 const dialogoFormulario = ref(false);
 const itemFormulario = ref({}); 
@@ -18,7 +24,6 @@ const esEdicion = ref(false);
 const formDialog = ref(null); 
 const valido = ref(false);
 
-// Fecha máxima (Hoy)
 const fechaMax = computed(() => {
   const hoy = new Date();
   return hoy.toISOString().split('T')[0];
@@ -27,25 +32,72 @@ const fechaMax = computed(() => {
 // --- LÓGICA DE FILTRADO ---
 const registrosFiltrados = computed(() => {
     return registros.value.filter(item => {
-        // 1. Filtro por Texto
         const texto = busqueda.value.toLowerCase();
         const coincideTexto = 
             item.Nombre.toLowerCase().includes(texto) ||
             item.Correo.toLowerCase().includes(texto) ||
             item.Telefono.includes(texto);
 
-        // 2. Filtro por Rango de Fechas
         let coincideFecha = true;
         if (fechaInicio.value && fechaFin.value && item.FechaNacimiento) {
             const fechaItem = new Date(item.FechaNacimiento).setHours(0,0,0,0);
             const fInicio = new Date(fechaInicio.value).setHours(0,0,0,0);
             const fFin = new Date(fechaFin.value).setHours(0,0,0,0);
-
             coincideFecha = fechaItem >= fInicio && fechaItem <= fFin;
         }
         return coincideTexto && coincideFecha;
     });
 });
+
+// --- 🟢 NUEVA LÓGICA: ORDENAMIENTO ---
+const registrosOrdenados = computed(() => {
+    // Hacemos una copia del array filtrado para ordenarlo
+    let resultado = [...registrosFiltrados.value];
+    
+    if (ordenColumna.value) {
+        resultado.sort((a, b) => {
+            let valA = a[ordenColumna.value];
+            let valB = b[ordenColumna.value];
+
+            // Convertir a minúsculas para ordenar bien las letras
+            if (typeof valA === 'string') valA = valA.toLowerCase();
+            if (typeof valB === 'string') valB = valB.toLowerCase();
+
+            if (valA < valB) return ordenAscendente.value ? -1 : 1;
+            if (valA > valB) return ordenAscendente.value ? 1 : -1;
+            return 0;
+        });
+    }
+    return resultado;
+});
+
+// --- 🟢 NUEVA LÓGICA: PAGINACIÓN ---
+const totalPaginas = computed(() => {
+    return Math.ceil(registrosOrdenados.value.length / elementosPorPagina) || 1;
+});
+
+const registrosPaginados = computed(() => {
+    const inicio = (paginaActual.value - 1) * elementosPorPagina;
+    const fin = inicio + elementosPorPagina;
+    return registrosOrdenados.value.slice(inicio, fin); // Extraemos solo los 5 correspondientes
+});
+
+// Si el usuario busca algo, regresamos a la página 1 automáticamente
+watch([busqueda, fechaInicio, fechaFin], () => {
+    paginaActual.value = 1;
+});
+
+// Función para cambiar la columna de orden
+const cambiarOrden = (columna) => {
+    if (ordenColumna.value === columna) {
+        ordenAscendente.value = !ordenAscendente.value; // Invierte el orden si ya estaba seleccionada
+    } else {
+        ordenColumna.value = columna;
+        ordenAscendente.value = true; // Nuevo ordenamiento empieza A-Z
+    }
+    paginaActual.value = 1; // Al reordenar, volvemos a la pag 1
+};
+
 
 // --- REGLAS DE VALIDACIÓN ---
 const reglasNombre = [
@@ -97,6 +149,10 @@ const eliminarItem = async (id) => {
     const data = await res.json();
     if (data.success) {
         registros.value = registros.value.filter(item => item.ID !== id);
+        // Ajustar paginación si borramos el último item de la página
+        if (paginaActual.value > totalPaginas.value) {
+            paginaActual.value = totalPaginas.value;
+        }
     }
   } catch (error) {
     console.error(error);
@@ -201,12 +257,11 @@ onMounted(() => {
     </div>
 
     <v-card width="100%" max-width="1100" class="mb-6 pa-5" elevation="3" rounded="xl">
-        
         <v-row dense>
             <v-col cols="12">
                 <v-text-field
                     v-model="busqueda"
-                    label="Buscar por Nombre, Correo, Teléfono, etc"
+                    label="Buscar por palabra clave (Nombre, Correo, Teléfono)"
                     prepend-inner-icon="mdi-magnify"
                     variant="outlined"
                     density="comfortable"
@@ -244,23 +299,11 @@ onMounted(() => {
             </v-col>
 
             <v-col cols="12" md="4" class="d-flex justify-end gap-2 align-center">
-                 <v-btn 
-                    variant="tonal" 
-                    color="grey-darken-1" 
-                    @click="limpiarFiltros" 
-                    prepend-icon="mdi-filter-off"
-                    class="text-capitalize"
-                >
+                 <v-btn variant="tonal" color="grey-darken-1" @click="limpiarFiltros" prepend-icon="mdi-filter-off" class="text-capitalize">
                     Limpiar
                 </v-btn>
 
-                <v-btn 
-                    color="#42b883" 
-                    prepend-icon="mdi-plus" 
-                    class="text-white font-weight-bold" 
-                    elevation="2"
-                    @click="abrirCrear"
-                >
+                <v-btn color="#42b883" prepend-icon="mdi-plus" class="text-white font-weight-bold" elevation="2" @click="abrirCrear">
                     Nuevo
                 </v-btn>
             </v-col>
@@ -268,18 +311,37 @@ onMounted(() => {
     </v-card>
 
     <v-card elevation="10" rounded="xl" width="100%" max-width="1100" border class="overflow-x-auto">
-      <v-table fixed-header height="500px" hover style="min-width: 900px;">
+      <v-table hover style="min-width: 900px;">
         <thead>
           <tr style="background-color: #35495e;">
-            <th class="text-white font-weight-bold pl-6">Nombre</th>
-            <th class="text-white font-weight-bold">Contacto</th>
-            <th class="text-white font-weight-bold">Nacimiento</th>
+            
+            <th class="text-white font-weight-bold pl-6 cursor-pointer hover-bg" @click="cambiarOrden('Nombre')">
+              Nombre
+              <v-icon size="small" v-if="ordenColumna === 'Nombre'" class="ml-1">
+                {{ ordenAscendente ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
+              </v-icon>
+            </th>
+            
+            <th class="text-white font-weight-bold cursor-pointer hover-bg" @click="cambiarOrden('Correo')">
+              Contacto
+              <v-icon size="small" v-if="ordenColumna === 'Correo'" class="ml-1">
+                {{ ordenAscendente ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
+              </v-icon>
+            </th>
+            
+            <th class="text-white font-weight-bold cursor-pointer hover-bg" @click="cambiarOrden('FechaNacimiento')">
+              Nacimiento
+              <v-icon size="small" v-if="ordenColumna === 'FechaNacimiento'" class="ml-1">
+                {{ ordenAscendente ? 'mdi-arrow-up' : 'mdi-arrow-down' }}
+              </v-icon>
+            </th>
+
             <th class="text-white font-weight-bold">Mensaje</th>
             <th class="text-white font-weight-bold text-center" style="width: 120px;">Acciones</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="item in registrosFiltrados" :key="item.ID">
+          <tr v-for="item in registrosPaginados" :key="item.ID">
             
             <td class="text-capitalize font-weight-bold text-grey-darken-3 pl-6">
                 {{ item.Nombre }}
@@ -310,7 +372,7 @@ onMounted(() => {
             </td>
           </tr>
           
-          <tr v-if="registrosFiltrados.length === 0 && !loading">
+          <tr v-if="registrosPaginados.length === 0 && !loading">
             <td colspan="5" class="text-center pa-10 text-grey">
                 <v-icon size="40" class="mb-2">mdi-magnify-remove-outline</v-icon>
                 <div>No se encontraron registros</div>
@@ -318,6 +380,23 @@ onMounted(() => {
           </tr>
         </tbody>
       </v-table>
+
+      <v-divider></v-divider>
+
+      <div v-if="totalPaginas > 1" class="d-flex align-center justify-center pa-3 bg-grey-lighten-4">
+          <v-btn icon="mdi-chevron-double-left" variant="plain" size="small" :disabled="paginaActual === 1" @click="paginaActual = 1" title="Primera página"></v-btn>
+          
+          <v-btn icon="mdi-chevron-left" variant="plain" size="small" :disabled="paginaActual === 1" @click="paginaActual--" title="Página anterior"></v-btn>
+
+          <span class="mx-4 text-subtitle-2 text-grey-darken-2 font-weight-bold">
+              Página {{ paginaActual }} de {{ totalPaginas }}
+          </span>
+
+          <v-btn icon="mdi-chevron-right" variant="plain" size="small" :disabled="paginaActual === totalPaginas" @click="paginaActual++" title="Página siguiente"></v-btn>
+
+          <v-btn icon="mdi-chevron-double-right" variant="plain" size="small" :disabled="paginaActual === totalPaginas" @click="paginaActual = totalPaginas" title="Última página"></v-btn>
+      </div>
+
     </v-card>
 
     <v-dialog v-model="dialogoFormulario" max-width="500" persistent>
@@ -330,35 +409,19 @@ onMounted(() => {
                 <v-form ref="formDialog" v-model="valido" @submit.prevent>
                     
                     <v-text-field 
-                        v-model="itemFormulario.Nombre" 
-                        label="Nombre" 
-                        variant="outlined" 
-                        color="#42b883" 
-                        class="mb-2"
-                        :rules="reglasNombre"
-                        counter="60"
+                        v-model="itemFormulario.Nombre" label="Nombre" variant="outlined" color="#42b883" class="mb-2"
+                        :rules="reglasNombre" counter="60"
                         @input="v => { itemFormulario.Nombre = v.target.value.replace(/[^a-zA-ZáéíóúÁÉÍÓÚñÑ\s]/g, '') }"
                     ></v-text-field>
                     
                     <v-text-field 
-                        v-model="itemFormulario.Correo" 
-                        label="Correo" 
-                        variant="outlined" 
-                        color="#42b883" 
-                        class="mb-2"
-                        :rules="reglasCorreo"
-                        counter="100"
+                        v-model="itemFormulario.Correo" label="Correo" variant="outlined" color="#42b883" class="mb-2"
+                        :rules="reglasCorreo" counter="100"
                     ></v-text-field>
 
                     <v-text-field 
-                        v-model="itemFormulario.Telefono" 
-                        label="Teléfono" 
-                        variant="outlined" 
-                        color="#42b883" 
-                        class="mb-2" 
-                        maxlength="10"
-                        counter="10"
-                        :rules="reglasTelefono"
+                        v-model="itemFormulario.Telefono" label="Teléfono" variant="outlined" color="#42b883" class="mb-2" 
+                        maxlength="10" counter="10" :rules="reglasTelefono"
                         @input="v => { 
                             let limpio = v.target.value.replace(/[^0-9]/g, '');
                             if (limpio.length > 10) limpio = limpio.slice(0, 10);
@@ -367,24 +430,13 @@ onMounted(() => {
                     ></v-text-field>
 
                     <v-text-field 
-                        v-model="itemFormulario.FechaNacimiento" 
-                        label="Fecha Nacimiento" 
-                        type="date" 
-                        variant="outlined" 
-                        color="#42b883" 
-                        class="mb-2"
-                        :rules="reglasFecha"
-                        :max="fechaMax"
+                        v-model="itemFormulario.FechaNacimiento" label="Fecha Nacimiento" type="date" variant="outlined" color="#42b883" class="mb-2"
+                        :rules="reglasFecha" :max="fechaMax"
                     ></v-text-field>
 
                     <v-textarea 
-                        v-model="itemFormulario.Mensaje" 
-                        label="Mensaje" 
-                        variant="outlined" 
-                        color="#42b883" 
-                        rows="3"
-                        :rules="reglasMensaje"
-                        counter="300"
+                        v-model="itemFormulario.Mensaje" label="Mensaje" variant="outlined" color="#42b883" rows="3"
+                        :rules="reglasMensaje" counter="300"
                     ></v-textarea>
                 </v-form>
             </v-card-text>
@@ -392,13 +444,7 @@ onMounted(() => {
             <v-card-actions>
                 <v-spacer></v-spacer>
                 <v-btn color="grey" variant="text" @click="dialogoFormulario = false">Cancelar</v-btn>
-                <v-btn 
-                    color="#42b883" 
-                    variant="elevated" 
-                    class="text-white" 
-                    @click="guardarDatos" 
-                    :loading="cargandoGuardar"
-                >
+                <v-btn color="#42b883" variant="elevated" class="text-white" @click="guardarDatos" :loading="cargandoGuardar">
                     {{ esEdicion ? 'Actualizar' : 'Guardar' }}
                 </v-btn>
             </v-card-actions>
@@ -414,5 +460,14 @@ onMounted(() => {
 }
 .gap-2 {
     gap: 12px;
+}
+/* Efecto de mano y brillo suave al pasar el mouse por los títulos ordenables */
+.cursor-pointer {
+    cursor: pointer;
+    transition: background-color 0.2s;
+    user-select: none; /* Evita que el texto se seleccione al hacer click rápido */
+}
+.hover-bg:hover {
+    background-color: #405871 !important; /* Un tono un poquito más claro que el header original */
 }
 </style>
