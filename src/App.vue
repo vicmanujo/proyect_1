@@ -1,26 +1,61 @@
 <script setup>
-import { ref, computed } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue' // 🟢 Importamos onMounted y watch
+import { RouterView, useRoute, useRouter } from 'vue-router' // 🟢 Importamos useRouter
 
 const route = useRoute()
-const drawer = ref(false) // 🟢 Variable para abrir/cerrar menú en celular
+const router = useRouter()
+const drawer = ref(false) 
 
-// Menú de usuario
-const items = [
-  { title: 'Iniciar sesión', to: '/login', icon: 'mdi-login' },
-  { title: 'Registrarte', to: '/register', icon: 'mdi-account-plus' },
-]
+// 🟢 NUEVO: Variable para guardar los datos del usuario si está conectado
+const usuarioActual = ref(null)
 
-// Menú de demos (Aquí agregué 'Registros')
+// 🟢 NUEVO: Función que revisa si hay sesión guardada en localStorage
+const verificarSesion = () => {
+  const guardado = localStorage.getItem('usuarioLogueado')
+  if (guardado) {
+    usuarioActual.value = JSON.parse(guardado)
+  } else {
+    usuarioActual.value = null
+  }
+}
+
+// 🟢 NUEVO: Checamos la sesión al abrir la página y cada que cambiamos de pantalla
+onMounted(() => verificarSesion())
+watch(() => route.path, () => verificarSesion())
+
+// 🟢 NUEVO: Función para cerrar sesión
+const cerrarSesion = () => {
+  localStorage.removeItem('usuarioLogueado') // Borramos los datos
+  usuarioActual.value = null // Limpiamos la variable
+  router.push('/login') // Lo mandamos al login
+}
+
+// 🟢 NUEVO: Menú de usuario DINÁMICO
+const menuUsuario = computed(() => {
+  if (usuarioActual.value) {
+    return [
+      // Si está conectado, solo mostramos Cerrar Sesión
+      { title: 'Cerrar sesión', icon: 'mdi-logout', action: cerrarSesion, color: 'red-darken-1' }
+    ]
+  } else {
+    // Si no está conectado, mostramos Login y Registro
+    return [
+      { title: 'Iniciar sesión', to: '/login', icon: 'mdi-login' },
+      { title: 'Registrarte', to: '/register', icon: 'mdi-account-plus' },
+    ]
+  }
+})
+
+// Menú de demos (Intacto)
 const demos = [
   { title: 'Calculadora', to: '/calculadora', icon: 'mdi-calculator' },
   { title: 'Formulario', to: '/formulario', icon: 'mdi-form-select' },
-  { title: 'Crud', to: '/registros', icon: 'mdi-database' }, // 🟢 ¡Agregado!
+  { title: 'Crud', to: '/registros', icon: 'mdi-database' }, 
   { title: 'Carrusel', to: '/carrusel', icon: 'mdi-view-carousel' },
   { title: 'Página Error', to: '/error', icon: 'mdi-alert-circle' },
 ]
 
-// Migas de pan (Breadcrumbs)
+// Migas de pan (Breadcrumbs) (Intacto)
 const breadcrumbs = computed(() => {
   const currentPath = route.path
   const crumbs = [{ title: 'Inicio', disabled: false, to: '/', icon: 'mdi-home', color: 'grey-darken-1' }]
@@ -37,6 +72,7 @@ const breadcrumbs = computed(() => {
     if (currentPath === '/register') nombre = 'Registro'
     if (currentPath === '/hola-mundo') nombre = 'Hola Mundo'
     if (currentPath === '/captcha') nombre = 'Captcha'
+    if (currentPath === '/recuperar') nombre = 'Recuperar Password' // Agregué este por si acaso
     
     crumbs.push({ title: nombre, disabled: true, color: '#42b883' })
   }
@@ -47,14 +83,9 @@ const breadcrumbs = computed(() => {
 <template>
   <v-app theme="light"> 
 
-    <v-navigation-drawer
-      v-model="drawer"
-      temporary
-      location="left"
-    >
+    <v-navigation-drawer v-model="drawer" temporary location="left">
       <v-list>
         <v-list-subheader>NAVEGACIÓN</v-list-subheader>
-        
         <v-list-item to="/" prepend-icon="mdi-home" title="Inicio"></v-list-item>
         <v-list-item to="/hola-mundo" prepend-icon="mdi-hand-wave" title="Hola Mundo"></v-list-item>
         <v-list-item to="/captcha" prepend-icon="mdi-robot" title="Captcha"></v-list-item>
@@ -72,14 +103,9 @@ const breadcrumbs = computed(() => {
       </v-list>
     </v-navigation-drawer>
 
-
     <v-app-bar elevation="1" color="#35495e" class="text-white">
       
-      <v-app-bar-nav-icon 
-        class="d-md-none" 
-        variant="text" 
-        @click.stop="drawer = !drawer"
-      ></v-app-bar-nav-icon>
+      <v-app-bar-nav-icon class="d-md-none" variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
 
       <template v-slot:prepend>
         <v-icon color="#42b883" size="large" class="ml-2 d-none d-md-flex">mdi-vuejs</v-icon>
@@ -119,20 +145,32 @@ const breadcrumbs = computed(() => {
       <v-menu transition="scale-transition" location="bottom end">
         <template v-slot:activator="{ props }">
           <v-btn icon v-bind="props">
-            <v-avatar color="#42b883" size="35">
-              <v-icon color="white">mdi-account</v-icon>
+            <v-avatar :color="usuarioActual ? 'blue-darken-2' : '#42b883'" size="35">
+              <v-icon color="white">{{ usuarioActual ? 'mdi-account-check' : 'mdi-account' }}</v-icon>
             </v-avatar>
           </v-btn>
         </template>
 
-        <v-list density="compact" width="200">
-          <v-list-subheader class="text-uppercase font-weight-bold text-caption">Cuenta</v-list-subheader>
-          <v-list-item v-for="(item, i) in items" :key="i" :to="item.to" link active-color="primary">
+        <v-list density="compact" width="220">
+          <v-list-subheader class="text-uppercase font-weight-bold text-caption text-truncate">
+            {{ usuarioActual ? usuarioActual.correo : 'Cuenta' }}
+          </v-list-subheader>
+          <v-divider class="mb-1"></v-divider>
+
+          <v-list-item 
+            v-for="(item, i) in menuUsuario" 
+            :key="i" 
+            :to="item.to" 
+            @click="item.action ? item.action() : null"
+            link 
+            :base-color="item.color || 'default'"
+          >
             <template v-slot:prepend>
               <v-icon :icon="item.icon" size="small"></v-icon>
             </template>
             <v-list-item-title>{{ item.title }}</v-list-item-title>
           </v-list-item>
+
         </v-list>
       </v-menu>
 
