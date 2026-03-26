@@ -1,140 +1,158 @@
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
-const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : '';
+import { ref, onMounted } from 'vue'
 
 const visible = ref(false)
-const correo = ref('')
+const loading = ref(false)
+
+const cuenta = ref('')
 const password = ref('')
-const cargando = ref(false)
-const mensajeError = ref('')
+const errorMsg = ref('')
+const captchaToken = ref(null)
 
-const iniciarSesion = async () => {
-  mensajeError.value = '';
+const recaptchaContainer = ref(null)
 
-  // Validación básica
-  if (!correo.value || !password.value) {
-    mensajeError.value = "Por favor ingresa correo y contraseña";
-    return;
+const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : ''
+// 🟢 Leemos tu llave pública del .env
+const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY
+
+// ==========================================
+// CARGA NATIVA DEL RECAPTCHA DE GOOGLE
+// ==========================================
+onMounted(() => {
+  window.onRecaptchaCargado = () => {
+    window.grecaptcha.render(recaptchaContainer.value, {
+      sitekey: siteKey,
+      callback: (token) => {
+        captchaToken.value = token
+        errorMsg.value = ''
+      },
+      'expired-callback': () => {
+        captchaToken.value = null
+      }
+    })
   }
 
-  cargando.value = true;
+  const script = document.createElement('script')
+  script.src = 'https://www.google.com/recaptcha/api.js?onload=onRecaptchaCargado&render=explicit'
+  script.async = true
+  script.defer = true
+  document.head.appendChild(script)
+})
+
+// ==========================================
+// LÓGICA DE INICIO DE SESIÓN
+// ==========================================
+const iniciarSesion = async () => {
+  errorMsg.value = ''
+
+  if (!cuenta.value || !password.value) {
+    errorMsg.value = 'Por favor ingresa tu cuenta y contraseña.'
+    return
+  }
+  if (!captchaToken.value) {
+    errorMsg.value = 'Por favor, marca la casilla de "No soy un robot".'
+    return
+  }
+
+  loading.value = true
 
   try {
     const res = await fetch(`${baseURL}/api/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ correo: correo.value, password: password.value })
-    });
+      body: JSON.stringify({
+        cuenta: cuenta.value,
+        password: password.value,
+        captchaToken: captchaToken.value
+      })
+    })
 
-    const data = await res.json();
+    const data = await res.json()
 
     if (data.success) {
-      // 🟢 GUARDAMOS SESIÓN (Temporalmente en el navegador)
-      localStorage.setItem('usuarioLogueado', JSON.stringify(data.usuario));
+      // 🟢 GUARDAMOS EL TOKEN (Pase VIP)
+      localStorage.setItem('sesion_activa', data.token) 
+      localStorage.setItem('usuario', JSON.stringify(data.usuario))
       
-      // Lo mandamos a la pantalla de registros o inicio
-      router.push('/registros'); 
+      // Forzamos recarga para que el Cadenero nos deje entrar
+      window.location.href = '/' 
     } else {
-      mensajeError.value = data.message;
+      errorMsg.value = data.message 
+      // Si falla la contraseña, reseteamos el Captcha por seguridad
+      if (window.grecaptcha) window.grecaptcha.reset()
+      captchaToken.value = null
     }
   } catch (error) {
-    mensajeError.value = "Error de conexión con el servidor";
+    console.error("Error:", error)
+    errorMsg.value = 'Error de conexión con el servidor.'
   } finally {
-    cargando.value = false;
+    loading.value = false
   }
 }
 </script>
 
 <template>
-  <v-container class="fill-height bg-grey-lighten-4" fluid>
-    <v-row align="center" justify="center">
-      <v-col cols="12" sm="8" md="6" lg="4">
-        
-        <v-img
-          class="mx-auto my-6"
-          max-width="80"
-          src="https://cdn.vuetifyjs.com/docs/images/logos/vuetify-logo-v3-slim-text-light.svg"
-        ></v-img>
+  <div class="d-flex flex-column justify-center align-center fill-height bg-grey-lighten-4" style="min-height: 100vh;">
+    
+    <div class="text-center mb-6">
+      <v-icon size="60" color="#1867C0" class="mb-2">mdi-domain</v-icon>
+      <h2 class="font-weight-bold text-grey-darken-3">CORP SYSTEM</h2>
+    </div>
 
-        <v-card
-          class="mx-auto pa-8 pa-md-12"
-          elevation="8"
-          max-width="448"
-          rounded="xl"
-        >
-          <div class="text-subtitle-1 text-medium-emphasis mb-1">Correo Electrónico</div>
+    <v-card class="pa-8 w-100" elevation="4" max-width="448" rounded="xl">
+      <div class="text-h6 font-weight-bold text-grey-darken-3 mb-6 text-center">Inicia sesión en tu cuenta</div>
 
-          <v-text-field
-            v-model="correo"
-            density="compact"
-            placeholder="ejemplo@correo.com"
-            prepend-inner-icon="mdi-email-outline"
-            variant="outlined"
-            color="#42b883"
-            @keyup.enter="iniciarSesion"
-          ></v-text-field>
+      <v-alert v-if="errorMsg" type="error" variant="tonal" density="compact" class="mb-4 text-caption">
+        {{ errorMsg }}
+      </v-alert>
 
-          <div class="text-subtitle-1 text-medium-emphasis d-flex align-center justify-space-between mb-1">
-            Contraseña
-            <router-link to="/recuperar" class="text-caption text-decoration-none text-green-darken-1"> ¿Olvidaste tu contraseña?
-            </router-link>
-          </div>
+      <v-form @submit.prevent="iniciarSesion">
+        <div class="text-subtitle-2 text-medium-emphasis mb-1">Cuenta de Usuario o Correo</div>
+        <v-text-field
+          v-model="cuenta"
+          density="compact"
+          placeholder="ejemplo@empresa.com"
+          prepend-inner-icon="mdi-account-outline"
+          variant="outlined"
+          color="#1867C0"
+          class="mb-2"
+        ></v-text-field>
 
-          <v-text-field
-            v-model="password"
-            :append-inner-icon="visible ? 'mdi-eye-off' : 'mdi-eye'"
-            :type="visible ? 'text' : 'password'"
-            density="compact"
-            placeholder="Ingresa tu contraseña"
-            prepend-inner-icon="mdi-lock-outline"
-            variant="outlined"
-            color="#42b883"
-            @click:append-inner="visible = !visible"
-            @keyup.enter="iniciarSesion"
-          ></v-text-field>
+        <div class="text-subtitle-2 text-medium-emphasis mb-1 d-flex align-center justify-space-between">
+          Contraseña
+          <a class="text-caption text-decoration-none font-weight-bold" style="color: #1867C0;" href="#" rel="noopener noreferrer">
+            ¿Olvidaste tu contraseña?
+          </a>
+        </div>
 
-          <v-expand-transition>
-            <v-alert
-                v-if="mensajeError"
-                type="error"
-                variant="tonal"
-                density="compact"
-                class="mb-6 text-caption"
-            >
-                {{ mensajeError }}
-            </v-alert>
-          </v-expand-transition>
+        <v-text-field
+          v-model="password"
+          :append-inner-icon="visible ? 'mdi-eye-off' : 'mdi-eye'"
+          :type="visible ? 'text' : 'password'"
+          density="compact"
+          placeholder="Ingresa tu contraseña"
+          prepend-inner-icon="mdi-lock-outline"
+          variant="outlined"
+          color="#1867C0"
+          class="mb-4"
+          @click:append-inner="visible = !visible"
+        ></v-text-field>
 
-          <v-card class="mb-8" color="surface-variant" variant="tonal">
-            <v-card-text class="text-medium-emphasis text-caption">
-              Advertencia: Después de 3 intentos fallidos, la cuenta se bloqueará temporalmente.
-            </v-card-text>
-          </v-card>
-
-          <v-btn
-            class="mb-8 font-weight-bold"
-            color="#42b883"
-            size="large"
-            block
-            rounded="lg"
-            :loading="cargando"
-            @click="iniciarSesion"
-          >
-            Iniciar Sesión
-          </v-btn>
-
-          <v-card-text class="text-center">
-            ¿No tienes cuenta?
-            <router-link to="/register" class="text-green-darken-1 text-decoration-none font-weight-bold">
-              Regístrate ahora <v-icon icon="mdi-chevron-right"></v-icon>
-            </router-link>
+        <v-card class="mb-4" color="blue-lighten-5" variant="flat" border>
+          <v-card-text class="text-grey-darken-2 text-caption">
+            <v-icon start size="small" color="#1867C0">mdi-information</v-icon>
+            Advertencia: Después de 3 intentos fallidos, tu cuenta será temporalmente bloqueada.
           </v-card-text>
-
         </v-card>
-      </v-col>
-    </v-row>
-  </v-container>
+
+        <div class="d-flex justify-center mb-6">
+          <div ref="recaptchaContainer"></div>
+        </div>
+
+        <v-btn type="submit" class="mb-4 font-weight-bold" color="#1867C0" size="large" block :loading="loading">
+          Ingresar
+        </v-btn>
+      </v-form>
+    </v-card>
+  </div>
 </template>

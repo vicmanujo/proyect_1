@@ -1,79 +1,127 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import InicioView from '../views/InicioView.vue'
-import CaptchaView from '../views/CaptchaView.vue'
-import ErrorView from '../views/ErrorView.vue'
+import HomeView from '../views/HomeView.vue'
+import MiPerfilView from '../views/MiPerfilView.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
-    // 1. Rutas normales
     {
       path: '/',
-      name: 'inicio',
-      component: InicioView
-    },
-    {
-      path: '/captcha',
-      name: 'captcha',
-      component: CaptchaView
-    },
-    {
-      path: '/error',
-      name: 'error',
-      component: ErrorView
-    },
-    {
-      path: '/hola-mundo',
-      name: 'holamundo',
-      component: () => import('../views/HolaMundoView.vue') 
-    },
-    {
-      path: '/calculadora',
-      name: 'calculadora',
-      component: () => import('../views/CalculadoraView.vue')
-    },
-    {
-      path: '/formulario',
-      name: 'formulario',
-      component: () => import('../views/FormularioView.vue')
-    },
-    {
-      path: '/registros',
-      name: 'registros',
-      component: () => import('../views/RegistrosView.vue')
-    },
-    {
-      path: '/carrusel',
-      name: 'carrusel',
-      component: () => import('../views/CarruselView.vue')
+      name: 'home',
+      component: HomeView
     },
     {
       path: '/login',
       name: 'login',
       component: () => import('../views/LoginView.vue')
     },
-
+    // 🟢 LA NUEVA PANTALLA DE CASTIGO (La crearemos en el siguiente paso)
     {
-      path: '/register',
-      name: 'register',
-      component: () => import('../views/RegisterView.vue')
+      path: '/error403',
+      name: 'error403',
+      component: () => import('../views/Error403View.vue')
+    },
+    {
+      path: '/mi-perfil',
+      name: 'mi-perfil',
+      component: MiPerfilView
     },
 
-    {
-      path: '/recuperar',
-      name: 'recuperar',
-      component: () => import('../views/RecuperarView.vue')
-    },
+    // ==========================================
+    // RUTAS DEL SISTEMA (Con comodines jerárquicos)
+    // ==========================================
+    { path: '/:menuPadre?/perfil', name: 'perfil', component: () => import('../views/PerfilView.vue') },
+    { path: '/:menuPadre?/modulo', name: 'modulo', component: () => import('../views/ModuloView.vue') },
+    { path: '/:menuPadre?/permisosperfil', name: 'permisos', component: () => import('../views/PermisosView.vue') },
+    { path: '/:menuPadre?/usuario', name: 'usuario', component: () => import('../views/UsuarioView.vue') },
+    { path: '/:menuPadre?/menu', name: 'menu', component: () => import('../views/MenuView.vue') },
 
-    // 2. RUTA COMODÍN (SIEMPRE AL FINAL DE TODO)
-    // Cualquier ruta que no coincida con las de arriba, caerá aquí.
+    { path: '/:menuPadre?/principal1.1', name: 'principal1.1', component: () => import('../views/Principal11View.vue') },
+    { path: '/:menuPadre?/principal1.2', name: 'principal1.2', component: () => import('../views/Principal12View.vue') },
+    { path: '/:menuPadre?/principal2.1', name: 'principal2.1', component: () => import('../views/Principal21View.vue') },
+    { path: '/:menuPadre?/principal2.2', name: 'principal2.2', component: () => import('../views/Principal22View.vue') },
+
+    // 🟢 RUTA COMODÍN (Si escriben algo que no existe)
     {
       path: '/:pathMatch(.*)*', 
-      redirect: '/error' 
+      name: 'error',
+      component: () => import('../views/ErrorView.vue') 
     }
   ]
 })
 
+const zonasLibres = ['/login', '/', '/mi-perfil', '/error403', '/error'] // <-- Agrégalo aquí
 
+// ==========================================
+// 🚨 GUARDIA DE SEGURIDAD (ZERO TRUST)
+// ==========================================
+router.beforeEach(async (to, from, next) => {
+  const tokenJWT = localStorage.getItem('sesion_activa')
+  const usrStr = localStorage.getItem('usuario')
+  const menuStr = localStorage.getItem('menuDinamico')
+
+  // Estas rutas son "zonas libres" donde no necesitamos validar permisos de módulo
+  const zonasLibres = ['/login', '/', '/mi-perfil', '/error403']
+
+  // 1. SIN SESIÓN -> Al Login directo
+  if (!tokenJWT && !zonasLibres.includes(to.path)) {
+    return next('/login')
+  }
+
+  // 2. CON SESIÓN INTENTANDO IR AL LOGIN -> Lo regresamos al inicio
+  if (tokenJWT && to.path === '/login') {
+    return next('/')
+  }
+
+  // 3. 🚨 PROTOCOLO ZERO TRUST: Validar accesos a módulos 🚨
+  if (tokenJWT && !zonasLibres.includes(to.path)) {
+    let tienePermiso = false;
+
+    // Buscamos si la ruta a la que quiere ir existe en sus permisos asignados
+    if (menuStr) {
+      const menuObj = JSON.parse(menuStr)
+      for (const menu of menuObj) {
+        const submodulo = menu.submodulos.find(sub => sub.strRutaUrl === to.path)
+        // Solo lo dejamos pasar si lo encontró Y además tiene permiso de Consulta (bitConsulta = 1)
+        if (submodulo && submodulo.permisos && submodulo.permisos.consulta !== false) {
+          tienePermiso = true
+          break
+        }
+      }
+    }
+
+    // 💥 SI NO TIENE PERMISO SE ACTIVA EL BLOQUEO
+    if (!tienePermiso) {
+      console.warn(`🚨 INTRUSIÓN DETECTADA: Intento de acceso a ${to.path}`)
+      
+      if (usrStr) {
+        try {
+          const usr = JSON.parse(usrStr)
+          const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : ''
+          
+          // 💥 3.1 Disparamos la suspensión al backend por 15 minutos
+          await fetch(`${baseURL}/api/suspender-cuenta`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idUsuario: usr.id })
+          })
+        } catch (error) {
+          console.error("Fallo al contactar al servidor para suspender", error)
+        }
+      }
+
+      // 💥 3.2 Destruimos su sesión en el navegador (borramos el token y sus datos)
+      localStorage.removeItem('sesion_activa')
+      localStorage.removeItem('usuario')
+      localStorage.removeItem('menuDinamico')
+
+      // 💥 3.3 Lo mandamos a la celda de castigo (La vista Error403)
+      return next('/error403')
+    }
+  }
+
+  // 4. Si pasó todas las pruebas y es un usuario honesto, lo dejamos pasar amablemente
+  next()
+})
 
 export default router

@@ -1,205 +1,236 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue' // 🟢 Importamos onMounted y watch
-import { RouterView, useRoute, useRouter } from 'vue-router' // 🟢 Importamos useRouter
+import { ref, computed, onMounted, provide, watch } from 'vue' // 🟢 Agregamos watch
+import { RouterView, useRoute, useRouter } from 'vue-router'
 
 const route = useRoute()
 const router = useRouter()
-const drawer = ref(false) 
+const drawer = ref(true) 
 
-// 🟢 NUEVO: Variable para guardar los datos del usuario si está conectado
-const usuarioActual = ref(null)
+const esLogin = computed(() => route.path === '/login')
+const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : ''
 
-// 🟢 NUEVO: Función que revisa si hay sesión guardada en localStorage
-const verificarSesion = () => {
-  const guardado = localStorage.getItem('usuarioLogueado')
-  if (guardado) {
-    usuarioActual.value = JSON.parse(guardado)
-  } else {
-    usuarioActual.value = null
-  }
-}
-
-// 🟢 NUEVO: Checamos la sesión al abrir la página y cada que cambiamos de pantalla
-onMounted(() => verificarSesion())
-watch(() => route.path, () => verificarSesion())
-
-// 🟢 NUEVO: Función para cerrar sesión
-const cerrarSesion = () => {
-  localStorage.removeItem('usuarioLogueado') // Borramos los datos
-  usuarioActual.value = null // Limpiamos la variable
-  router.push('/login') // Lo mandamos al login
-}
-
-// 🟢 NUEVO: Menú de usuario DINÁMICO
-const menuUsuario = computed(() => {
-  if (usuarioActual.value) {
-    return [
-      // Si está conectado, solo mostramos Cerrar Sesión
-      { title: 'Cerrar sesión', icon: 'mdi-logout', action: cerrarSesion, color: 'red-darken-1' }
-    ]
-  } else {
-    // Si no está conectado, mostramos Login y Registro
-    return [
-      { title: 'Iniciar sesión', to: '/login', icon: 'mdi-login' },
-      { title: 'Registrarte', to: '/register', icon: 'mdi-account-plus' },
-    ]
-  }
-})
-
-// Menú de demos (Intacto)
-const demos = [
-  { title: 'Calculadora', to: '/calculadora', icon: 'mdi-calculator' },
-  { title: 'Formulario', to: '/formulario', icon: 'mdi-form-select' },
-  { title: 'Crud', to: '/registros', icon: 'mdi-database' }, 
-  { title: 'Carrusel', to: '/carrusel', icon: 'mdi-view-carousel' },
-  { title: 'Página Error', to: '/error', icon: 'mdi-alert-circle' },
+const rutasOcultas = [
+  { to: '/menu', tituloPadre: 'Configuración', titulo: 'Menús Principales' },
+  { to: '/modulo', tituloPadre: 'Configuración', titulo: 'Módulos' },
+  { to: '/perfil', tituloPadre: 'Configuración', titulo: 'Perfiles' },
+  { to: '/permisos', tituloPadre: 'Configuración', titulo: 'Permisos' },
+  { to: '/usuario', tituloPadre: 'Configuración', titulo: 'Usuarios' },
+  { to: '/mi-perfil', tituloPadre: 'Cuenta', titulo: 'Configuración de Cuenta' }
 ]
 
-// Migas de pan (Breadcrumbs) (Intacto)
+const usuarioLogueado = ref(null)
+
+// ==========================================
+// 🟢 1. EL TRUCO DEL ACORDEÓN
+// ==========================================
+const carpetasAbiertas = ref([]) 
+watch(carpetasAbiertas, (nuevoValor) => {
+  // Si el usuario abre más de 1 carpeta, forzamos a la lista a quedarse SOLO con la última que tocó
+  if (nuevoValor.length > 1) {
+    carpetasAbiertas.value = [nuevoValor[nuevoValor.length - 1]]
+  }
+})
+
+// ==========================================
+// 🟢 2. ORDENAMIENTO (A-Z y Z-A)
+// ==========================================
+const menuDinamico = ref([])
+const ordenAscendente = ref(true) // Controla la dirección
+
+const alternarOrden = () => {
+  ordenAscendente.value = !ordenAscendente.value
+}
+
+// Creamos un menú ordenado "al vuelo" sin tocar el original de la BD
+const menuDinamicoOrdenado = computed(() => {
+  // Clonamos el menú para poder modificarlo
+  const menuCopia = JSON.parse(JSON.stringify(menuDinamico.value))
+
+  return menuCopia.sort((a, b) => {
+    // Ordenamos las carpetas principales
+    if (a.titulo < b.titulo) return ordenAscendente.value ? -1 : 1
+    if (a.titulo > b.titulo) return ordenAscendente.value ? 1 : -1
+    return 0
+  }).map(padre => {
+    // Ordenamos las subcarpetas de adentro
+    padre.submodulos.sort((a, b) => {
+      if (a.strNombreModulo < b.strNombreModulo) return ordenAscendente.value ? -1 : 1
+      if (a.strNombreModulo > b.strNombreModulo) return ordenAscendente.value ? 1 : -1
+      return 0
+    })
+    return padre
+  })
+})
+
+const cargarMenuDinamico = async () => {
+  if (!usuarioLogueado.value) return 
+  
+  try {
+    const res = await fetch(`${baseURL}/api/menu-dinamico?idPerfil=${usuarioLogueado.value.idPerfil}`)
+    const data = await res.json()
+    if (data.success) {
+      menuDinamico.value = data.menu
+    }
+  } catch (error) {
+    console.error("Error cargando el menú lateral:", error)
+  }
+}
+
+onMounted(() => {
+  const usr = localStorage.getItem('usuario')
+  if (usr) {
+    usuarioLogueado.value = JSON.parse(usr)
+  }
+  cargarMenuDinamico()
+  window.addEventListener('perfil-actualizado', (event) => {
+    // Cuando el Perfil lanza el evento, actualizamos las variables de la barra superior al instante
+    usuarioLogueado.value = event.detail
+    })
+})
+
+provide('actualizarMenuLateral', cargarMenuDinamico)
+
 const breadcrumbs = computed(() => {
   const currentPath = route.path
-  const crumbs = [{ title: 'Inicio', disabled: false, to: '/', icon: 'mdi-home', color: 'grey-darken-1' }]
-  if (currentPath === '/') return crumbs
+  if (currentPath === '/login') return [] 
 
-  const esDemo = demos.find(d => d.to === currentPath)
-
-  if (esDemo) {
-    crumbs.push({ title: 'Demos', disabled: true, color: 'grey' })
-    crumbs.push({ title: esDemo.title, disabled: true, color: '#42b883' })
-  } else {
-    let nombre = 'Página Actual'
-    if (currentPath === '/login') nombre = 'Iniciar Sesión'
-    if (currentPath === '/register') nombre = 'Registro'
-    if (currentPath === '/hola-mundo') nombre = 'Hola Mundo'
-    if (currentPath === '/captcha') nombre = 'Captcha'
-    if (currentPath === '/recuperar') nombre = 'Recuperar Password' // Agregué este por si acaso
-    
-    crumbs.push({ title: nombre, disabled: true, color: '#42b883' })
+  const crumbs = [{ title: 'Inicio', to: '/', color: 'grey' }]
+  
+  const rutaOculta = rutasOcultas.find(r => r.to === currentPath)
+  if (rutaOculta) {
+    crumbs.push({ title: rutaOculta.tituloPadre, disabled: true, color: 'grey' })
+    crumbs.push({ title: rutaOculta.titulo, disabled: true, color: '#1976D2' }) 
+    return crumbs 
   }
+
+  for (const padre of menuDinamico.value) {
+    const hijo = padre.submodulos.find(s => s.strRutaUrl === currentPath)
+    if (hijo) {
+      crumbs.push({ title: padre.titulo, disabled: true, color: 'grey' })
+      crumbs.push({ title: hijo.strNombreModulo, disabled: true, color: '#1976D2' }) 
+      return crumbs
+    }
+  }
+
   return crumbs
 })
+
+const cerrarSesion = () => {
+  localStorage.clear()
+  sessionStorage.clear()
+  window.location.href = '/login'
+}
 </script>
 
 <template>
   <v-app theme="light"> 
+    
+    <v-navigation-drawer 
+      v-if="!esLogin" 
+      v-model="drawer" 
+      :permanent="$vuetify.display.mdAndUp" 
+      elevation="2"
+    >
+      <div class="pa-4 text-center bg-blue-darken-3">
+        <v-icon size="40" color="white" class="mb-2">mdi-domain</v-icon>
+        <h3 class="text-white font-weight-bold">CORP SYSTEM</h3>
+      </div>
 
-    <v-navigation-drawer v-model="drawer" temporary location="left">
-      <v-list>
-        <v-list-subheader>NAVEGACIÓN</v-list-subheader>
-        <v-list-item to="/" prepend-icon="mdi-home" title="Inicio"></v-list-item>
-        <v-list-item to="/hola-mundo" prepend-icon="mdi-hand-wave" title="Hola Mundo"></v-list-item>
-        <v-list-item to="/captcha" prepend-icon="mdi-robot" title="Captcha"></v-list-item>
+      <v-list density="compact" nav v-model:opened="carpetasAbiertas">
+        <v-list-item to="/" prepend-icon="mdi-view-dashboard" title="Inicio"></v-list-item>
 
         <v-divider class="my-2"></v-divider>
-        <v-list-subheader>DEMOS</v-list-subheader>
+        
+        <div class="d-flex align-center justify-space-between px-2 mt-2 mb-1">
+          <span class="text-caption text-grey-darken-1 font-weight-bold text-uppercase">Módulos del Sistema</span>
+          <v-btn icon size="x-small" variant="text" color="grey-darken-1" @click="alternarOrden" :title="ordenAscendente ? 'Ordenar Z-A' : 'Ordenar A-Z'">
+            <v-icon>{{ ordenAscendente ? 'mdi-sort-alphabetical-ascending' : 'mdi-sort-alphabetical-descending' }}</v-icon>
+          </v-btn>
+        </div>
 
-        <v-list-item 
-            v-for="(demo, i) in demos" 
-            :key="i" 
-            :to="demo.to" 
-            :prepend-icon="demo.icon" 
-            :title="demo.title"
-        ></v-list-item>
+        <v-list-group v-for="padre in menuDinamicoOrdenado" :key="padre.id" :value="padre.titulo">
+          <template v-slot:activator="{ props }">
+            <v-list-item v-bind="props" :prepend-icon="padre.icono" :title="padre.titulo"></v-list-item>
+          </template>
+
+          <v-list-item
+            v-for="hijo in padre.submodulos"
+            :key="hijo.id"
+            :to="hijo.strRutaUrl"
+            :title="hijo.strNombreModulo"
+            prepend-icon="mdi-circle-small"
+            active-color="blue-darken-3"
+          ></v-list-item>
+        </v-list-group>
+
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar elevation="1" color="#35495e" class="text-white">
-      
+    <v-app-bar elevation="1" color="white" v-if="!esLogin">
       <v-app-bar-nav-icon class="d-md-none" variant="text" @click.stop="drawer = !drawer"></v-app-bar-nav-icon>
 
-      <template v-slot:prepend>
-        <v-icon color="#42b883" size="large" class="ml-2 d-none d-md-flex">mdi-vuejs</v-icon>
-      </template>
-
-      <v-app-bar-title class="font-weight-bold">
-        <span class="text-green-accent-3">Mi</span>Proyecto
-      </v-app-bar-title>
-
-      <v-spacer></v-spacer>
-
-      <div class="d-none d-md-flex">
-        <v-btn to="/" prepend-icon="mdi-home" variant="text" class="text-capitalize">Inicio</v-btn>
-        <v-btn to="/hola-mundo" prepend-icon="mdi-hand-wave" variant="text" class="text-capitalize">Hola Mundo</v-btn>
-        <v-btn to="/captcha" prepend-icon="mdi-robot" variant="text" class="text-capitalize">Captcha</v-btn>
-
-        <v-menu open-on-hover>
-          <template v-slot:activator="{ props }">
-            <v-btn v-bind="props" color="#42b883" variant="text" append-icon="mdi-chevron-down" class="text-capitalize font-weight-bold">
-              Demos
-            </v-btn>
-          </template>
-
-          <v-list elevation="3" density="compact">
-            <v-list-item v-for="(demo, i) in demos" :key="i" :to="demo.to" active-color="green">
-              <template v-slot:prepend>
-                <v-icon :icon="demo.icon" color="grey-darken-2"></v-icon>
-              </template>
-              <v-list-item-title>{{ demo.title }}</v-list-item-title>
-            </v-list-item>
-          </v-list>
-        </v-menu>
-      </div>
+      <v-breadcrumbs :items="breadcrumbs" density="compact">
+        <template v-slot:divider><v-icon icon="mdi-chevron-right" size="small" color="grey"></v-icon></template>
+        <template v-slot:title="{ item }">
+          <span :style="{ color: item.color }" class="font-weight-bold text-caption text-uppercase">{{ item.title }}</span>
+        </template>
+      </v-breadcrumbs>
 
       <v-spacer></v-spacer>
-      
-      <v-menu transition="scale-transition" location="bottom end">
+
+      <v-menu min-width="250" rounded="xl" offset-y>
         <template v-slot:activator="{ props }">
-          <v-btn icon v-bind="props">
-            <v-avatar :color="usuarioActual ? 'blue-darken-2' : '#42b883'" size="35">
-              <v-icon color="white">{{ usuarioActual ? 'mdi-account-check' : 'mdi-account' }}</v-icon>
+          <v-btn icon v-bind="props" class="mr-4">
+            <v-avatar color="#1867C0" size="40" class="elevation-2">
+              <v-img v-if="usuarioLogueado?.fotoUrl" :src="usuarioLogueado.fotoUrl"></v-img>
+              <span v-else class="text-white font-weight-bold text-h6">
+                {{ usuarioLogueado?.nombre?.charAt(0).toUpperCase() }}
+              </span>
             </v-avatar>
           </v-btn>
         </template>
 
-        <v-list density="compact" width="220">
-          <v-list-subheader class="text-uppercase font-weight-bold text-caption text-truncate">
-            {{ usuarioActual ? usuarioActual.correo : 'Cuenta' }}
-          </v-list-subheader>
-          <v-divider class="mb-1"></v-divider>
+        <v-card rounded="xl" elevation="4">
+          <v-list>
+            <v-list-item>
+              <template v-slot:prepend>
+                <v-avatar color="#1867C0" size="48">
+                  <v-img v-if="usuarioLogueado?.fotoUrl" :src="usuarioLogueado.fotoUrl"></v-img>
+                  <span v-else class="text-white font-weight-bold text-h5">{{ usuarioLogueado?.nombre?.charAt(0).toUpperCase() }}</span>
+                </v-avatar>
+              </template>
+              <v-list-item-title class="font-weight-bold text-grey-darken-3">{{ usuarioLogueado?.nombre }}</v-list-item-title>
+              <v-list-item-subtitle class="text-success font-weight-medium">
+                <v-icon size="small" color="success">mdi-circle</v-icon> En línea
+              </v-list-item-subtitle>
+            </v-list-item>
+          </v-list>
 
-          <v-list-item 
-            v-for="(item, i) in menuUsuario" 
-            :key="i" 
-            :to="item.to" 
-            @click="item.action ? item.action() : null"
-            link 
-            :base-color="item.color || 'default'"
-          >
-            <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small"></v-icon>
-            </template>
-            <v-list-item-title>{{ item.title }}</v-list-item-title>
-          </v-list-item>
+          <v-divider></v-divider>
 
-        </v-list>
+          <v-list density="compact" class="pa-2">
+            <v-list-item to="/mi-perfil" rounded="lg" prepend-icon="mdi-account-cog-outline" title="Configuración de Cuenta" class="mb-1"></v-list-item>
+            <v-list-item rounded="lg" prepend-icon="mdi-logout" title="Cerrar Sesión" base-color="red-darken-1" @click="cerrarSesion"></v-list-item>
+          </v-list>
+        </v-card>
       </v-menu>
-
     </v-app-bar>
 
     <v-main class="bg-grey-lighten-4">
-      <v-container v-if="route.path !== '/'" class="pb-0 pt-4">
-        <v-sheet rounded="lg" elevation="1" class="px-4 py-1">
-            <v-breadcrumbs :items="breadcrumbs" density="compact">
-                <template v-slot:divider>
-                    <v-icon icon="mdi-chevron-right" size="small" color="grey"></v-icon>
-                </template>
-                <template v-slot:title="{ item }">
-                    <div :style="{ color: item.color }" class="font-weight-bold text-caption text-uppercase">
-                         <v-icon v-if="item.icon" :icon="item.icon" size="small" class="mr-1"></v-icon>
-                        {{ item.title }}
-                    </div>
-                </template>
-            </v-breadcrumbs>
-        </v-sheet>
-      </v-container>
+      
+      <RouterView v-if="esLogin" />
 
-      <v-container>
+      <v-container fluid class="fill-height align-start" v-else>
         <RouterView />
       </v-container>
+
     </v-main>
+
   </v-app>
 </template>
 
 <style scoped>
-.v-btn { letter-spacing: 0.5px; }
+.v-list-group__items .v-list-item {
+  padding-left: 2rem !important;
+}
 </style>
