@@ -70,6 +70,8 @@ const cargarMenuDinamico = async () => {
     const data = await res.json()
     if (data.success) {
       menuDinamico.value = data.menu
+
+      localStorage.setItem('menuDinamico', JSON.stringify(data.menu))
     }
   } catch (error) {
     console.error("Error cargando el menú lateral:", error)

@@ -15,7 +15,6 @@ const router = createRouter({
       name: 'login',
       component: () => import('../views/LoginView.vue')
     },
-    // 🟢 LA NUEVA PANTALLA DE CASTIGO (La crearemos en el siguiente paso)
     {
       path: '/error403',
       name: 'error403',
@@ -50,8 +49,6 @@ const router = createRouter({
   ]
 })
 
-const zonasLibres = ['/login', '/', '/mi-perfil', '/error403', '/error'] // <-- Agrégalo aquí
-
 // ==========================================
 // 🚨 GUARDIA DE SEGURIDAD (ZERO TRUST)
 // ==========================================
@@ -60,21 +57,25 @@ router.beforeEach(async (to, from, next) => {
   const usrStr = localStorage.getItem('usuario')
   const menuStr = localStorage.getItem('menuDinamico')
 
-  // Estas rutas son "zonas libres" donde no necesitamos validar permisos de módulo
-  const zonasLibres = ['/login', '/', '/mi-perfil', '/error403']
+  // 1. Zonas completamente públicas (NO piden sesión)
+  const zonasLibres = ['/login', '/error403', '/error']
 
-  // 1. SIN SESIÓN -> Al Login directo
+  // 2. Zonas base (SÍ piden sesión, pero NO validan permisos en la BD)
+  const rutasBase = ['/', '/mi-perfil']
+
+  // 🛑 REGLA 1: SIN SESIÓN -> Si intenta ir a cualquier lado que no sea público, ¡Patada al Login!
   if (!tokenJWT && !zonasLibres.includes(to.path)) {
     return next('/login')
   }
 
-  // 2. CON SESIÓN INTENTANDO IR AL LOGIN -> Lo regresamos al inicio
+  // 🛑 REGLA 2: CON SESIÓN -> Si intenta ir al Login, lo regresamos a Inicio
   if (tokenJWT && to.path === '/login') {
     return next('/')
   }
 
-  // 3. 🚨 PROTOCOLO ZERO TRUST: Validar accesos a módulos 🚨
-  if (tokenJWT && !zonasLibres.includes(to.path)) {
+  // 🛑 REGLA 3: PROTOCOLO ZERO TRUST -> Validar módulos del menú
+  // 🟢 LA CORRECCIÓN ESTÁ AQUÍ: Agregamos && !rutasBase.includes(to.path) para que ignore el Inicio y el Perfil
+  if (tokenJWT && !zonasLibres.includes(to.path) && !rutasBase.includes(to.path)) {
     let tienePermiso = false;
 
     // Buscamos si la ruta a la que quiere ir existe en sus permisos asignados
@@ -82,7 +83,7 @@ router.beforeEach(async (to, from, next) => {
       const menuObj = JSON.parse(menuStr)
       for (const menu of menuObj) {
         const submodulo = menu.submodulos.find(sub => sub.strRutaUrl === to.path)
-        // Solo lo dejamos pasar si lo encontró Y además tiene permiso de Consulta (bitConsulta = 1)
+        // Solo lo dejamos pasar si lo encontró Y además tiene permiso de Consulta (bitConsulta = true/1)
         if (submodulo && submodulo.permisos && submodulo.permisos.consulta !== false) {
           tienePermiso = true
           break
@@ -99,7 +100,7 @@ router.beforeEach(async (to, from, next) => {
           const usr = JSON.parse(usrStr)
           const baseURL = import.meta.env.DEV ? 'http://localhost:3000' : ''
           
-          // 💥 3.1 Disparamos la suspensión al backend por 15 minutos
+          // 💥 Disparamos la suspensión al backend por 15 minutos
           await fetch(`${baseURL}/api/suspender-cuenta`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -110,12 +111,12 @@ router.beforeEach(async (to, from, next) => {
         }
       }
 
-      // 💥 3.2 Destruimos su sesión en el navegador (borramos el token y sus datos)
+      // 💥 Destruimos su sesión en el navegador
       localStorage.removeItem('sesion_activa')
       localStorage.removeItem('usuario')
       localStorage.removeItem('menuDinamico')
 
-      // 💥 3.3 Lo mandamos a la celda de castigo (La vista Error403)
+      // 💥 Lo mandamos a la celda de castigo
       return next('/error403')
     }
   }

@@ -51,6 +51,26 @@ const transporter = nodemailer.createTransport({
 });
 
 // =================================================================
+// 🕵️‍♂️ FUNCIÓN MAESTRA DE BITÁCORA (AUDIT TRAIL)
+// =================================================================
+const registrarBitacora = async (req, accion, modulo, detalle) => {
+    try {
+        const pool = await sql.connect(dbConfig);
+        await pool.request()
+            .input('idUsuario', sql.Int, req.usuario?.id || 0)
+            .input('strUsuario', sql.VarChar, req.usuario?.nombre || 'Sistema')
+            .input('accion', sql.VarChar, accion)
+            .input('modulo', sql.VarChar, modulo)
+            .input('detalle', sql.Text, detalle)
+            .input('ip', sql.VarChar, req.ip || req.headers['x-forwarded-for'] || '127.0.0.1')
+            .query(`INSERT INTO Bitacora (idUsuario, strUsuario, accion, modulo, detalle, ip) 
+                    VALUES (@idUsuario, @strUsuario, @accion, @modulo, @detalle, @ip)`);
+    } catch (err) {
+        console.error("Error al escribir en bitácora:", err);
+    }
+};
+
+// =================================================================
 // 🛡️ MIDDLEWARE DE SEGURIDAD (CUIDA QUE NO ENTREN POR POSTMAN)
 // =================================================================
 const verificarToken = (req, res, next) => {
@@ -144,6 +164,10 @@ app.post('/api/login', async (req, res) => {
         };
         const token = jwt.sign(tokenPayload, process.env.JWT_SECRET, { expiresIn: '2h' });
 
+
+        req.usuario = tokenPayload;
+        await registrarBitacora(req, 'LOGIN', 'Seguridad', `Inicio de sesión exitoso.`);
+
         res.json({ 
             success: true, 
             token, 
@@ -151,7 +175,9 @@ app.post('/api/login', async (req, res) => {
                 id: usuario.id,
                 nombre: usuario.strNombreUsuario, 
                 fotoUrl: usuario.strUrlImagen, 
-                idPerfil: usuario.idPerfil 
+                idPerfil: usuario.idPerfil,
+                verificado: usuario.Verificado,
+                esAdmin: usuario.bitAdministrador === 1 || usuario.bitAdministrador === true
             } 
         });
 
@@ -203,6 +229,10 @@ app.get('/api/mi-perfil/:id', async (req, res) => {
         } else {
             res.status(404).json({ success: false, message: 'Usuario no encontrado' });
         }
+
+        await registrarBitacora(req, 'UPDATE', 'Mi Perfil', `Actualización de datos personales.`);
+        res.json({ success: true, fotoUrl: fotoUrlFinal });
+
     } catch (err) {
         console.error("Error al obtener perfil:", err);
         res.status(500).json({ success: false, message: 'Error interno del servidor' });
@@ -300,6 +330,9 @@ app.put('/api/cambiar-password/:id', async (req, res) => {
             .query('UPDATE Usuario SET strPwd = @pwd WHERE id = @id');
 
         res.json({ success: true, message: '¡Contraseña actualizada con éxito!' });
+
+        await registrarBitacora(req, 'UPDATE', 'Seguridad', `Cambio de contraseña realizado.`);
+        res.json({ success: true });
     } catch (err) {
         console.error("Error al cambiar contraseña:", err);
         res.status(500).json({ success: false, message: 'Error interno del servidor' });
@@ -376,7 +409,13 @@ app.post('/api/verificar-codigo', async (req, res) => {
 // =================================================================
 // 📁 4. MÓDULOS DEL SISTEMA Y CATÁLOGOS (CRUDs)
 // =================================================================
-
+app.get('/api/bitacora', verificarToken, async (req, res) => {
+    try {
+        let pool = await sql.connect(dbConfig);
+        const result = await pool.request().query('SELECT TOP 1000 * FROM Bitacora ORDER BY fechaRegistro DESC');
+        res.json({ success: true, logs: result.recordset });
+    } catch (err) { res.status(500).json({ success: false }); }
+});
 // Menú Dinámico
 // =================================================================
 // MENÚ DINÁMICO INTELIGENTE (CON PERMISOS DE BOTONES INCLUIDOS)
@@ -593,6 +632,10 @@ app.put('/api/usuario/:id', upload.single('foto'), async (req, res) => {
 app.delete('/api/usuario/:id',verificarToken, async (req, res) => {
     try { let pool = await sql.connect(dbConfig); await pool.request().input('id', sql.Int, req.params.id).query('DELETE FROM Usuario WHERE id = @id'); res.json({ success: true, message: 'Eliminado' }); } catch (err) { res.status(500).json({ success: false, message: 'Error' }); }
 });
+
+
+
+
 
 // ==========================================
 // 🚀 5. INICIALIZACIÓN (VERCEL / LOCAL)

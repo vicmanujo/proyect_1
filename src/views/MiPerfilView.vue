@@ -160,7 +160,6 @@ const solicitarCodigo = async () => {
     })
     const data = await res.json()
     
-    // Si el correo sale de Node, mostramos TU pantalla de OTP
     if (data.success) {
       codigoEnviado.value = true 
       mostrarMensaje('Código enviado a tu correo.', 'success')
@@ -192,9 +191,22 @@ const verificarCuenta = async () => {
       perfil.value.verificado = true
       codigoEnviado.value = false
       mensajeVerificacion.value = ''
-      mostrarMensaje('¡Tu cuenta ha sido verificada!', 'success')
+      mostrarMensaje('¡Tu cuenta ha sido verificada! Redirigiendo...', 'success')
+
+      // 🟢 MAGIA AQUÍ: Actualizamos la libretita del navegador
+      const usr = JSON.parse(localStorage.getItem('usuario'))
+      if (usr) {
+        usr.verificado = true
+        localStorage.setItem('usuario', JSON.stringify(usr))
+      }
+
+      // 🟢 Esperamos 1.5 segundos y lo mandamos a Inicio
+      setTimeout(() => {
+        window.location.href = '/'
+      }, 1500)
+
     } else {
-      mensajeVerificacion.value = data.message // Te avisa si te equivocaste de código
+      mensajeVerificacion.value = data.message 
       otp.value = ''
     }
   } catch (error) {
